@@ -5,22 +5,10 @@ import warnings
 import neat
 import matplotlib.pyplot as plt
 import numpy as np
-import snake
 
 
 
-def test_winner(genome, config_path):
-    """Visualizes the genome passed playing the snake game"""
 
-    # Load configuration into a NEAT object.
-    config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
-                         neat.DefaultSpeciesSet, neat.DefaultStagnation,
-                         config_path)
-    
-    net = neat.nn.FeedForwardNetwork.create(genome, config) # Initialize the neural network from the passed genome.s
-
-    # run the simulation
-    snake.simulate_animation(net, genome, config) # Simulate the environment with a GUI.
 
 
 def plot_stats(statistics, ylog=False, view=False, filename='avg_fitness.svg'):

@@ -56,7 +56,7 @@ def simulate_headless(net):
     sensory_function = create_sensory_function(Config.INPUT_FEATURES)
     scores = []
 
-    for _ in range(NEAT_Config.FITNESS_ITERS):
+    for _ in range(Config.FITNESS_ITERS):
         reset()
         last_ate_apple = 0
         t = 0
@@ -79,7 +79,7 @@ def simulate_headless(net):
 def change_direction(action):
     global v_x, v_y
 
-    if Config.FRAME_OF_REFERENCE == 'nswe':
+    if Config.OUTPUT_FRAME_OF_REFERENCE == 'nswe':
         assert 0 <= action <= 3
         directions = [
             (0, -1),  # North
@@ -89,7 +89,7 @@ def change_direction(action):
         ]
         v_x, v_y = directions[action]
 
-    elif Config.FRAME_OF_REFERENCE == 'snake':
+    elif Config.OUTPUT_FRAME_OF_REFERENCE == 'snake':
         assert 0 <= action <= 2
         if action == TURN_LEFT:
             if v_x == 1 and v_y == 0:    # East to North
@@ -264,6 +264,7 @@ def simulate_animation(net, genome, config):
     while running:
         if dead:
             running = False
+            pygame.quit()
         if ts - last_ate_apple > Config.MIN_TIME_TO_EAT_APPLE:
             running = False
 
@@ -341,7 +342,7 @@ def draw_network(net, genome, node_centers, hidden_nodes):
     node_names = {}
     
     # Map input features based on the frame of reference
-    if Config.FRAME_OF_REFERENCE == 'nswe':
+    if Config.INPUT_FRAME_OF_REFERENCE == 'nswe':
         node_names.update({0: 'Up', 1: 'Left', 2: 'Down', 3: 'Right'})
         
         # Add node names based on the input features [in order of the input features list]
@@ -375,7 +376,7 @@ def draw_network(net, genome, node_centers, hidden_nodes):
                     -i*4-4: "Obst_W"
                 })
 
-    elif Config.FRAME_OF_REFERENCE == 'snake':
+    elif Config.INPUT_FRAME_OF_REFERENCE == 'snake':
         node_names.update({0: 'Left', 1: 'Straight', 2: 'Right'})
         
         for i, feature in enumerate(Config.INPUT_FEATURES):
@@ -473,7 +474,7 @@ def draw_obstacle():
 
 def draw_fitness():
   fitness_text = font.render(f"Fitness: {apples_eaten}", True, WHITE)
-  screen.blit(fitness_text, (SCREEN_WIDTH - 170, 30))
+  screen.blit(fitness_text, (SCREEN_WIDTH - 130, 30))
 
 # =========================INPUT FEATURE FUNCTIONS NSWE==========================
 #Make a function that compiles a get_sensory function only once, such that you don't have to go through all these if statements for every evualation of a genome.
@@ -487,7 +488,7 @@ def create_sensory_function(input_features):
         sensory_input = []
 
         for feature in input_features:
-            if Config.FRAME_OF_REFERENCE == 'nswe':
+            if Config.INPUT_FRAME_OF_REFERENCE == 'nswe':
                 if feature == 'wall':
                     sensory_input.extend(get_wall_info(x, y))
                 elif feature == 'relative_body':
@@ -506,7 +507,9 @@ def create_sensory_function(input_features):
                     sensory_input.extend(get_relative_distance_to_obstacle(x, y))
                 elif feature == 'nearest_body_direction':
                     sensory_input.extend(get_direction_of_nearest_body_segment(x, y))
-            elif Config.FRAME_OF_REFERENCE == 'snake':
+                elif feature == 'dummy':
+                    sensory_input.extend([0, 0, 0, 0])
+            elif Config.INPUT_FRAME_OF_REFERENCE == 'snake':
                 if feature == 'wall':
                     sensory_input.extend(get_wall_info_relative(x, y))
                 elif feature == 'body':
@@ -525,6 +528,11 @@ def create_sensory_function(input_features):
                     sensory_input.extend(get_relative_distance_to_obstacle_relative(x, y))
                 elif feature == 'nearest_body_direction':
                     sensory_input.extend(get_direction_of_nearest_body_segment_relative(x, y))
+                elif feature == 'dummy':
+                    sensory_input.extend([0, 0, 0])
+
+            if feature == 'history':
+                sensory_input.extend(movement_history)
 
         return np.array(sensory_input, dtype=float)
 

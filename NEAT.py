@@ -6,21 +6,25 @@ import neat
 import visualize
 import multiprocessing
 import shutil
-import snake as snake
 from config import *
 
 
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 
 
-
+def simulate_headless(net):
+    global current_game_instance
+    if current_game_instance is None:
+        raise ValueError("Current game instance is not set.")
+    return current_game_instance.simulate_headless(net)
 
 def eval_genome(genome, config): 
     """
     Fitness function to evaluate single genome, used with ParallelEvaluator.
     """
+    global current_game_instance
     net = neat.nn.FeedForwardNetwork.create(genome, config)
-    fitness = snake.simulate_headless(net)  # Evaluate the genome in a headless simulation.
+    fitness = current_game_instance.simulate_headless(net)  # Evaluate the genome in a headless simulation.
     return fitness                          # For the ParallelEvaluator to work, the fitness must be returned.
 
 
@@ -33,13 +37,14 @@ def eval_genomes(genomes, config):
     genomes (list of tuples): List of (genome_id, genome) tuples.
     config (neat.Config): NEAT configuration settings for network creation.
     """
+    global current_game_instance
     for genome_id, genome in genomes:
         net = neat.nn.FeedForwardNetwork.create(genome, config) # Create a neural network from the genome.
-        fitness = snake.simulate_headless(net)  # Evaluate the genome in a headless simulation.
+        fitness = current_game_instance.simulate_headless(net)  # Evaluate the genome in a headless simulation.
         genome.fitness = fitness  # Assign the fitness to the genome.
 
 
-def run_NEAT(config_file):
+def run_NEAT(config_file, n_generations=10):
     """
     Run the NEAT algorithm to find the best performing genome.
     """
@@ -67,7 +72,7 @@ def run_NEAT(config_file):
     parallel_evaluator = neat.ParallelEvaluator(multiprocessing.cpu_count(), eval_genome) #parallelized fitness function
 
     # Run the NEAT algorithm for n generations
-    winner = p.run(parallel_evaluator.evaluate, n=Config.N_GENERATIONS)  
+    winner = p.run(parallel_evaluator.evaluate, n=n_generations)  
 
     # Visualize statistics and species progression over generations.
     visualize.plot_stats(stats, ylog=False, view=True, filename=f"{Paths.RESULTS_PATH}/fitness_graph.png")
@@ -79,7 +84,7 @@ def run_NEAT(config_file):
     
     return winner, stats
 
-def run_NEAT_repeated(config_file, n_runs = Config.N_RUNS):
+def run_NEAT_repeated(config_file, n_runs = 1, n_generations = 10):
     """Runs multiple instances of the NEAT algorithm and returns the winners and statistics of each run."""
     config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
                          neat.DefaultSpeciesSet, neat.DefaultStagnation,
@@ -106,7 +111,7 @@ def run_NEAT_repeated(config_file, n_runs = Config.N_RUNS):
         p.add_reporter(neat.Checkpointer(1, filename_prefix=f"{Paths.RESULTS_PATH}/checkpoints/run{i}/population-"))
 
         parallel_evaluator = neat.ParallelEvaluator(multiprocessing.cpu_count(), eval_genome)
-        winner = p.run(parallel_evaluator.evaluate, n=Config.N_GENERATIONS)
+        winner = p.run(parallel_evaluator.evaluate, n = n_generations)
 
         winners.append(winner)
         stats_list.append(stats)
@@ -119,6 +124,19 @@ def run_NEAT_repeated(config_file, n_runs = Config.N_RUNS):
         print(f"Run {i} completed, best fitness: {winner.fitness}")
 
     return winners, stats_list
+
+def test_winner(genome, config_path):
+    """Visualizes the genome passed playing the snake game"""
+
+    # Load configuration into a NEAT object.
+    config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
+                        neat.DefaultSpeciesSet, neat.DefaultStagnation,
+                        config_path)
+    
+    net = neat.nn.FeedForwardNetwork.create(genome, config) # Initialize the neural network from the passed genome.s
+
+    # run the simulation
+    current_game_instance.simulate_animation(net, genome, config) # Simulate the environment with a GUI.
 
 
 if __name__ == '__main__':
