@@ -1,5 +1,11 @@
 import numpy as np
 import pygame
+import neat
+import multiprocessing
+import os
+import shutil
+import pickle
+import visualize
 from random import randint, seed, choice
 from config import *
 
@@ -9,10 +15,14 @@ class SnakeGame:
     """Class for the Snake game."""
     def __init__(self, 
                  input_features = ['wall', 'relative_body', 'relative_apple', 'relative_obstacle'], 
-                 input_frame_of_reference = 'nswe', output_frame_of_reference = 'snake', 
+                 input_frame_of_reference = 'nswe', 
+                 output_frame_of_reference = 'nswe', 
                  history_length = 3, 
                  use_obstacles = True,
-                 fitness_iters = 10):
+                 fitness_iters = 10,
+                 min_time_to_eat_apple = 100,
+                 n_runs = 1,
+                 n_generations = 10):
         """Initializes the game with default parameters."""
 
         # Game parameters
@@ -22,7 +32,9 @@ class SnakeGame:
         self.HISTORY_LENGTH = history_length
         self.USE_OBSTACLES =  use_obstacles
         self.FITNESS_ITERS = fitness_iters
-        self.MIN_TIME_TO_EAT_APPLE = 100
+        self.MIN_TIME_TO_EAT_APPLE = min_time_to_eat_apple
+        self.N_RUNS = n_runs
+        self.N_GENERATIONS = n_generations
 
         #Compute input and output size based on features and frame of reference
         if self.INPUT_FRAME_OF_REFERENCE == 'nswe':
@@ -47,7 +59,6 @@ class SnakeGame:
             },
         }
 
-
         # Set constants
         self.NUM_ROWS = 10
         self.NUM_COLS = 10
@@ -60,10 +71,11 @@ class SnakeGame:
         self.step_count = 0
         self.v_x, self.v_y = 1, 0
         self.movement_history = []
+        self.last_ate_apple = 0
         self.reset()
 
         # Animation parameters
-        self.INTERVAL = 300
+        self.INTERVAL = 100
         self.NODE_SIZE = 280 / self.NR_INPUT_FEATURES
         if self.NODE_SIZE > 20:
             self.NODE_SIZE = 20
@@ -90,13 +102,15 @@ class SnakeGame:
 
     def reset(self):
         """Resets the game to its initial state."""
-        self.snake = [(randint(1, self.NUM_COLS - 2), randint(1, self.NUM_ROWS - 2))]
+        self.snake = [(randint(1, self.NUM_COLS - 2), randint(1, self.NUM_ROWS - 2))] #snake can't start at edges
         self.snake_set = set(self.snake)
-        self.apple = self._get_random_position(exclude=self.snake_set)
-        self.obstacle = self._get_random_position(exclude=self.snake_set | {self.apple}) if self.USE_OBSTACLES else ()
         self.v_x, self.v_y = choice([(1, 0), (-1, 0), (0, 1), (0, -1)])
+        self.front, self.left, self.right = self.get_adjacent_positions(self.snake[-1], self.v_x, self.v_y)
+        self.apple = self._get_random_position(exclude=self.snake_set | {self.obstacle})
+        self.obstacle = self._get_random_position(exclude=self.snake_set | {self.apple} | {self.front, self.left, self.right}) if self.USE_OBSTACLES else ()
         self.apples_eaten = 0
         self.step_count = 0
+        self.last_ate_apple = 0
         self.dead = False
 
     def _get_random_position(self, exclude=set()):
@@ -106,6 +120,28 @@ class SnakeGame:
             pos = (randint(0, self.NUM_COLS - 1), randint(0, self.NUM_ROWS - 1))
         return pos
 
+    def get_adjacent_positions(self, head_position, v_x, v_y):
+        """Returns the positions in front, left, and right of the head position."""
+        if v_x == 0 and v_y == -1:
+            front = (head_position[0], head_position[1] - 1)
+            left = (head_position[0] - 1, head_position[1])
+            right = (head_position[0] + 1, head_position[1])
+        elif v_x == 0 and v_y == 1:
+            front = (head_position[0], head_position[1] + 1)
+            left = (head_position[0] + 1, head_position[1])
+            right = (head_position[0] - 1, head_position[1])
+        elif v_x == -1 and v_y == 0:
+            front = (head_position[0] - 1, head_position[1])
+            left = (head_position[0], head_position[1] + 1)
+            right = (head_position[0], head_position[1] - 1)
+        elif v_x == 1 and v_y == 0:
+            front = (head_position[0] + 1, head_position[1])
+            left = (head_position[0], head_position[1] - 1)
+            right = (head_position[0], head_position[1] + 1)
+        return front, left, right
+
+
+
     def simulate_headless(self, net):
         """Simulates the game without rendering it and returns the fitness score."""
         sensory_function = self.create_sensory_function(self.INPUT_FEATURES)
@@ -113,10 +149,9 @@ class SnakeGame:
 
         for _ in range(self.FITNESS_ITERS):
             self.reset()
-            last_ate_apple = 0
             t = 0
 
-            while not self.dead and (t - last_ate_apple <= self.MIN_TIME_TO_EAT_APPLE):
+            while not self.dead and (t - self.last_ate_apple <= self.MIN_TIME_TO_EAT_APPLE):
                 sensory_vector = sensory_function()
                 activations = net.activate(sensory_vector)
                 action = np.argmax(activations)
@@ -125,7 +160,7 @@ class SnakeGame:
                 t += 1
 
                 if apple_eaten:
-                    last_ate_apple = t
+                    self.last_ate_apple = t
 
             scores.append(len(self.snake))
 
@@ -143,9 +178,9 @@ class SnakeGame:
             self.v_x, self.v_y = directions[action]
 
         elif self.OUTPUT_FRAME_OF_REFERENCE == 'snake':
-            if action == 1:
+            if action == 1: #Turn left
                 self.v_x, self.v_y = -self.v_y, self.v_x
-            elif action == 2:
+            elif action == 2: #Turn right
                 self.v_x, self.v_y = self.v_y, -self.v_x
             # 0 does nothing
 
@@ -156,6 +191,8 @@ class SnakeGame:
         self.snake.append(new_head)
         self.snake_set.add(new_head)
 
+        self.front, self.left, self.right = self.get_adjacent_positions(new_head, self.v_x, self.v_y)
+
         if self._is_collision(new_head):
             self.dead = True
 
@@ -163,7 +200,7 @@ class SnakeGame:
         if ate_apple:
             self.apple = self._get_random_position(exclude=self.snake_set | {self.obstacle})
             if self.USE_OBSTACLES:
-                self.obstacle = self._get_random_position(exclude=self.snake_set | {self.apple})
+                self.obstacle = self._get_random_position(exclude=self.snake_set | {self.apple} | {self.front, self.left, self.right})
         else:
             tail = self.snake.pop(0)
             self.snake_set.remove(tail)
@@ -457,14 +494,13 @@ class SnakeGame:
         while running:
             if self.dead:
                 running = False
-                pygame.quit()
             if ts - last_ate_apple > self.MIN_TIME_TO_EAT_APPLE:
                 running = False
 
+            
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
-                    self.dead = True
                 elif event.type == STEP:
                     sensory_vector = sensory_function()
                     activations = net.activate(sensory_vector)
@@ -652,5 +688,125 @@ class SnakeGame:
     def draw_fitness(self):
         fitness_text = font.render(f"Fitness: {self.apples_eaten}", True, self.WHITE)
         screen.blit(fitness_text, (self.SCREEN_WIDTH - 130, 30))
+
+        
+    #===================== NEAT STUFF =====================
+    def eval_genome(self, genome, config): 
+        """
+        Fitness function to evaluate single genome, used with ParallelEvaluator.
+        """
+        net = neat.nn.FeedForwardNetwork.create(genome, config)
+        fitness = self.simulate_headless(net)  # Evaluate the genome in a headless simulation.
+        return fitness                          # For the ParallelEvaluator to work, the fitness must be returned.
+
+
+    def eval_genomes(self, genomes, config):
+        """
+        Fitness function used to assign fitness to all genomees. This is different from eval_genome in that 
+        it does not use the ParallelEvaluator and thus goes through each genome in the population one by one.
+
+        Args:
+        genomes (list of tuples): List of (genome_id, genome) tuples.
+        config (neat.Config): NEAT configuration settings for network creation.
+        """
+        for genome_id, genome in genomes:
+            net = neat.nn.FeedForwardNetwork.create(genome, config) # Create a neural network from the genome.
+            fitness = self.simulate_headless(net)  # Evaluate the genome in a headless simulation.
+            genome.fitness = fitness  # Assign the fitness to the genome.
+
+
+    def run_NEAT(self, config_file):
+        """
+        Run the NEAT algorithm to find the best performing genome.
+        """
+        # Load configuration into a NEAT object.
+        config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
+                            neat.DefaultSpeciesSet, neat.DefaultStagnation,
+                            config_file)
+
+        #Set results directory
+        if not os.path.exists(f"{Paths.RESULTS_PATH}/checkpoints"):
+            os.makedirs(f"{Paths.RESULTS_PATH}/checkpoints")
+
+        # Create the population
+        p = neat.Population(config)
+
+        # Add statistics reporter to the population
+        stats = neat.StatisticsReporter()
+        p.add_reporter(stats)
+
+        # Show progress in the terminal and add a checkpointer
+        p.add_reporter(neat.StdOutReporter(True))
+        p.add_reporter(neat.Checkpointer(10, filename_prefix=f"{Paths.RESULTS_PATH}/checkpoints/population-"))
+
+        # Add a parallel evaluator to evaluate the population in parallel.
+        parallel_evaluator = neat.ParallelEvaluator(multiprocessing.cpu_count(), self.eval_genome) #parallelized fitness function
+
+        # Run the NEAT algorithm for n generations
+        winner = p.run(parallel_evaluator.evaluate, n=self.N_GENERATIONS)  
+
+        # Visualize statistics and species progression over generations.
+        visualize.plot_stats(stats, ylog=False, view=True, filename=f"{Paths.RESULTS_PATH}/fitness_graph.png")
+        visualize.plot_species(stats, view=False, filename=f"{Paths.RESULTS_PATH}/species_graph.png")
+
+        # Save the winner.
+        with open('results/winner_genome', 'wb') as f:
+            pickle.dump(winner, f)
+        
+        return winner, stats
+
+    def run_NEAT_repeated(self, config_file):
+        """Runs multiple instances of the NEAT algorithm and returns the winners and statistics of each run."""
+        config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
+                            neat.DefaultSpeciesSet, neat.DefaultStagnation,
+                            config_file)
+
+        # Ensure the results directory exists.
+        if not os.path.exists(f"{Paths.RESULTS_PATH}/checkpoints"):
+            os.makedirs(f"{Paths.RESULTS_PATH}/checkpoints")
+
+        #Clear the output directory
+        shutil.rmtree(Paths.RESULTS_PATH)
+
+        winners = []
+        stats_list = []
+
+        for i in range(self.N_RUNS):  # Run the NEAT algorithm n times
+            print(f"Running NEAT algorithm, run {i}")
+            p = neat.Population(config)
+            stats = neat.StatisticsReporter()
+            p.add_reporter(stats)
+
+            if not os.path.exists(f"{Paths.RESULTS_PATH}/checkpoints/run{i}"):
+                os.makedirs(f"{Paths.RESULTS_PATH}/checkpoints/run{i}")
+            p.add_reporter(neat.Checkpointer(1, filename_prefix=f"{Paths.RESULTS_PATH}/checkpoints/run{i}/population-"))
+
+            parallel_evaluator = neat.ParallelEvaluator(multiprocessing.cpu_count(), self.eval_genome)
+            winner = p.run(parallel_evaluator.evaluate, n = self.N_GENERATIONS)
+
+            winners.append(winner)
+            stats_list.append(stats)
+
+            # Save the winner of each run
+            with open(f'{Paths.RESULTS_PATH}/checkpoints/run{i}/winner_genome', 'wb') as f:
+                pickle.dump(winner, f)
+
+            #Print results
+            print(f"Run {i} completed, best fitness: {winner.fitness}")
+
+        return winners, stats_list
+
+    def test_winner(self, genome, config_path):
+        """Visualizes the genome passed playing the snake game"""
+
+        # Load configuration into a NEAT object.
+        config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
+                            neat.DefaultSpeciesSet, neat.DefaultStagnation,
+                            config_path)
+        
+        net = neat.nn.FeedForwardNetwork.create(genome, config) # Initialize the neural network from the passed genome.s
+
+        # run the simulation
+        self.simulate_animation(net, genome, config) # Simulate the environment with a GUI.
 
 

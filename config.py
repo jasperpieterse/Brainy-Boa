@@ -1,12 +1,8 @@
 import configparser
-
-
-current_game_instance = None
-
-def set_current_game_instance(game_instance):
-    global current_game_instance
-    current_game_instance = game_instance
-
+class Config:   
+    #Neat parameters
+    N_RUNS = 1  # Number of runs of the NEAT algorithm
+    N_GENERATIONS = 10 # Number of generations for each run of the NEAT algorithm
 
 class Paths:
     RESULTS_PATH = 'results/'      # PATH to the results directory
