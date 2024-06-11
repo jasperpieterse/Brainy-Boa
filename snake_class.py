@@ -6,17 +6,20 @@ import os
 import shutil
 import pickle
 import visualize
-from random import randint, seed, choice
+
 from config import *
+from random import randint, seed, choice
 from enum import Enum
 
+# Initialize random seed for reproducibility
 seed(42)
 
 class Direction(Enum):
-    NORTH = (0, 1)
-    SOUTH = (0, -1)
-    WEST = (-1, 0)
+    """Cartesian coordinates with inverted y-axis."""
+    NORTH = (0, -1)
+    SOUTH = (0, 1)
     EAST = (1, 0)
+    WEST = (-1, 0)
 
 class Action(Enum):
     """Enum for the actions the snake can take."""
@@ -24,36 +27,60 @@ class Action(Enum):
     LEFT = 1
     RIGHT = 2
 
-
 class SnakeGame:
     """Class for the Snake game."""
-    def __init__(self, 
-                 input_features=['wall', 'relative_body', 'relative_apple', 'relative_obstacle'], 
-                 input_frame_of_reference='nswe', 
-                 output_frame_of_reference='nswe', 
-                 history_length=3, 
+
+    # Game Constants
+    NUM_ROWS = 10
+    NUM_COLS = 10
+    INTERVAL = 100
+    NODE_SIZE = 20
+    NETWORK_WIDTH = 700
+    NETWORK_HEIGHT = 900
+    GAME_WIDTH = 700
+    GAME_HEIGHT = 700
+    WINDOW_BUFFER = 25
+    BLOCK_WIDTH = GAME_WIDTH / NUM_COLS
+    BLOCK_HEIGHT = GAME_HEIGHT / NUM_ROWS
+    GAME_TOP_LEFT = (2 * WINDOW_BUFFER + NETWORK_WIDTH, WINDOW_BUFFER)
+    BUFFER = 4
+
+    # Colors
+    RED = (235, 64, 52)
+    WHITE = (245, 245, 245)
+    YELLOW = (252, 227, 109)
+    BLACK = (20, 20, 20)
+    BLUE = (58, 117, 196)
+    ORANGE = (255, 140, 0)
+
+    def __init__(self,
+                 input_features=['wall', 'relative_body', 'relative_apple', 'relative_obstacle'],
+                 input_frame_of_reference='NSEW',
+                 output_frame_of_reference='NSEW',
+                 history_length=3,
                  use_obstacles=True,
                  fitness_iters=10,
                  min_time_to_eat_apple=100,
                  n_runs=1,
-                 n_generations=10):
+                 n_generations=10,
+                 time_interval=100):
         """Initializes the game with default parameters."""
         # Game parameters
         self.INPUT_FEATURES = input_features
-        self.INPUT_FRAME_OF_REFERENCE = input_frame_of_reference 
+        self.INPUT_FRAME_OF_REFERENCE = input_frame_of_reference
         self.OUTPUT_FRAME_OF_REFERENCE = output_frame_of_reference
         self.HISTORY_LENGTH = history_length
-        self.USE_OBSTACLES =  use_obstacles
+        self.USE_OBSTACLES = use_obstacles
         self.FITNESS_ITERS = fitness_iters
         self.MIN_TIME_TO_EAT_APPLE = min_time_to_eat_apple
         self.N_RUNS = n_runs
         self.N_GENERATIONS = n_generations
 
         # Compute input and output size based on features and frame of reference
-        self.NR_INPUT_FEATURES = 4 * len(self.INPUT_FEATURES) if self.INPUT_FRAME_OF_REFERENCE == 'nswe' else 3 * len(self.INPUT_FEATURES)
+        self.NR_INPUT_FEATURES = 4 * len(self.INPUT_FEATURES) if self.INPUT_FRAME_OF_REFERENCE == 'NSEW' else 3 * len(self.INPUT_FEATURES)
         if 'history' in self.INPUT_FEATURES:
             self.NR_INPUT_FEATURES += self.HISTORY_LENGTH - 1
-        self.NR_OUTPUT_FEATURES = 4 if self.OUTPUT_FRAME_OF_REFERENCE == 'nswe' else 3
+        self.NR_OUTPUT_FEATURES = 4 if self.OUTPUT_FRAME_OF_REFERENCE == 'NSEW' else 3
 
         # Create an object to update neat parameters with later
         self.neat_params = {
@@ -65,9 +92,7 @@ class SnakeGame:
             },
         }
 
-        # Set constants
-        self.NUM_ROWS = 10
-        self.NUM_COLS = 10
+        # Initialize game state
         self.snake = []
         self.snake_set = set()
         self.apple = ()
@@ -81,31 +106,17 @@ class SnakeGame:
         self.reset()
 
         # Animation parameters
-        self.INTERVAL = 100
-        self.NODE_SIZE = min(20, 280 / self.NR_INPUT_FEATURES)
-        self.NETWORK_WIDTH, self.NETWORK_HEIGHT = 700, 900
-        self.GAME_WIDTH, self.GAME_HEIGHT = 700, 700
-        self.WINDOW_BUFFER = 25
+        self.INTERVAL = time_interval
         self.SCREEN_WIDTH = self.WINDOW_BUFFER + self.NETWORK_WIDTH + self.WINDOW_BUFFER + self.GAME_WIDTH + self.WINDOW_BUFFER
         self.SCREEN_HEIGHT = self.NETWORK_HEIGHT + 2 * self.WINDOW_BUFFER
-        self.BLOCK_WIDTH = self.GAME_WIDTH / self.NUM_COLS
-        self.BLOCK_HEIGHT = self.GAME_HEIGHT / self.NUM_ROWS
-        self.GAME_TOP_LEFT = (2 * self.WINDOW_BUFFER + self.NETWORK_WIDTH, self.WINDOW_BUFFER)
-        self.BUFFER = 4
 
-        self.RED = (235, 64, 52)
-        self.WHITE = (245, 245, 245)
-        self.YELLOW = (252, 227, 109)
-        self.BLACK = (20, 20, 20)
-        self.BLUE = (58, 117, 196)
-        self.ORANGE = (255, 140, 0)
-
+        # Pygame initialization
         self.screen = None
         self.font = None
 
     def reset(self):
         """Resets the game to its initial state."""
-        self.snake = [(randint(1, self.NUM_COLS - 2), randint(1, self.NUM_ROWS - 2))]  # snake can't start at edges
+        self.snake = [(randint(1, self.NUM_COLS - 2), randint(1, self.NUM_ROWS - 2))]  # Snake can't start at edges
         self.snake_set = set(self.snake)
         self.v_x, self.v_y = choice([(1, 0), (-1, 0), (0, 1), (0, -1)])
         self.front, self.left, self.right = self.get_adjacent_positions()
@@ -116,23 +127,21 @@ class SnakeGame:
         self.last_ate_apple = 0
         self.dead = False
 
-    def _get_random_position(self, exclude=set()):
+    def _get_random_position(self, exclude=set()) -> tuple:
         """Returns a random position that is not in the exclude set."""
         pos = (randint(0, self.NUM_COLS - 1), randint(0, self.NUM_ROWS - 1))
         while pos in exclude:
             pos = (randint(0, self.NUM_COLS - 1), randint(0, self.NUM_ROWS - 1))
         return pos
 
-    def get_adjacent_positions(self):
+    def get_adjacent_positions(self) -> tuple:
         """Returns the positions in front, left, and right of the head position."""
         front = (self.snake[-1][0] + self.v_x, self.snake[-1][1] + self.v_y)
         left = (self.snake[-1][0] - self.v_y, self.snake[-1][1] + self.v_x)
         right = (self.snake[-1][0] + self.v_y, self.snake[-1][1] - self.v_x)
-        
         return front, left, right
 
-
-    def simulate_headless(self, net):
+    def simulate_headless(self, net) -> float:
         """Simulates the game without rendering it and returns the fitness score."""
         scores = []
 
@@ -150,14 +159,13 @@ class SnakeGame:
 
                 if apple_eaten:
                     self.last_ate_apple = t
-
             scores.append(len(self.snake))
 
         return np.mean(scores)
 
-    def change_direction(self, action):
+    def change_direction(self, action: int):
         """Changes the direction of the snake based on the action (output of the neural network)."""
-        if self.OUTPUT_FRAME_OF_REFERENCE == 'nswe':
+        if self.OUTPUT_FRAME_OF_REFERENCE == 'NSEW':
             directions = [
                 Direction.NORTH.value,  # North
                 Direction.SOUTH.value,  # South
@@ -165,7 +173,7 @@ class SnakeGame:
                 Direction.WEST.value    # West
             ]
             self.v_x, self.v_y = directions[action]
-        elif self.OUTPUT_FRAME_OF_REFERENCE == 'snake':
+        elif self.OUTPUT_FRAME_OF_REFERENCE == 'SNAKE':
             if action == Action.STRAIGHT.value:  # Go straight
                 pass
             elif action == Action.LEFT.value:  # Turn left
@@ -173,12 +181,10 @@ class SnakeGame:
             elif action == Action.RIGHT.value:  # Turn right
                 self.v_x, self.v_y = self.v_y, -self.v_x
 
-
-    def step(self):
+    def step(self) -> bool:
         """Moves the snake one step forward and checks for collisions and apple eating."""
         x, y = self.snake[-1]
         new_head = (x + self.v_x, y + self.v_y)
-        self.front, self.left, self.right = self.get_adjacent_positions()
 
         # Check if the snake has collided with the wall, itself, or an obstacle
         if self._is_collision(new_head):
@@ -187,26 +193,33 @@ class SnakeGame:
         # If not, move the snake forward
         self.snake.append(new_head)
         self.snake_set.add(new_head)
+        self.front, self.left, self.right = self.get_adjacent_positions()
 
         # Check if the snake has eaten the apple and if so, generate a new apple and obstacle
-        if new_head == self.apple:
+        ate_apple = new_head == self.apple
+        if ate_apple:
+            self.apples_eaten += 1
             self.apple = self._get_random_position(exclude=self.snake_set | {self.obstacle})
             if self.USE_OBSTACLES:
-                self.obstacle = self._get_random_position(exclude=self.snake_set | {self.apple} | {self.front, self.left, self.right})
-        # If not, remove the tail of the snake
+                self.obstacle = self._get_random_position(exclude=self.snake_set | {self.apple})
         else:
+            # Remove tail
             tail = self.snake.pop(0)
             self.snake_set.remove(tail)
 
         self.step_count += 1
+        return ate_apple
 
-    def _is_collision(self, position):
-        """Returns True if the position is a collision (with the wall, snake, or obstacle)."""
+    def _is_collision(self, position: tuple) -> bool:
+        """Checks if the given position collides with the walls, itself, or an obstacle."""
         x, y = position
-        return ((x < 0) or (x >= self.NUM_COLS) or (y < 0) or (y >= self.NUM_ROWS) or
-                (position in self.snake_set) or (self.USE_OBSTACLES and position == self.obstacle))
+        return (
+            x < 0 or x >= self.NUM_COLS or
+            y < 0 or y >= self.NUM_ROWS or
+            position in self.snake_set or
+            position == self.obstacle
+        )
     
-
 
     def sensory_function(self):
         """Returns the sensory input for the neural network."""
@@ -214,14 +227,14 @@ class SnakeGame:
         sensory_input = []
 
         for feature in self.INPUT_FEATURES:
-            if self.INPUT_FRAME_OF_REFERENCE == 'nswe':
-                sensory_input.extend(self.get_info_nswe(feature, x, y))
-            elif self.INPUT_FRAME_OF_REFERENCE == 'snake':
-                sensory_input.extend(self.get_info_snake(feature, x, y))
+            if self.INPUT_FRAME_OF_REFERENCE == 'NSEW':
+                sensory_input.extend(self.get_info(feature, x, y))
+            elif self.INPUT_FRAME_OF_REFERENCE == 'SNAKE':
+                sensory_input.extend(self.convert_to_snake(self.get_info(feature, x, y)))
                 
         return np.array(sensory_input, dtype=float)
 
-    def get_info_nswe(self, feature, x, y):
+    def get_info(self, feature, x, y):
         """Returns the sensory information for the given feature at the given position."""
         if feature == 'wall':
             return self.get_wall_info(x, y)
@@ -229,204 +242,127 @@ class SnakeGame:
             return self.get_relative_distance_to_body(x, y)
         elif feature == 'binary_body':
             return self.get_binary_distance_to_body(x, y)
-        elif feature == 'combined_obstacle_body':
-            return self.get_combined_obstacle_body_info(x, y)
         elif feature == 'relative_apple':
             return self.get_relative_distance_to_apple(x, y)
         elif feature == 'binary_apple':
-            return self.get_apple_info(x, y)
+            return self.get_binary_distance_to_apple(x, y)
         elif feature == 'relative_obstacle':
             return self.get_relative_distance_to_obstacle(x, y)
         elif feature == 'binary_obstacle':
-            return self.get_obstacle_info(x, y)
-        elif feature == 'nearest_body_direction':
-            return self.get_direction_of_nearest_body_segment(x, y)
-
-    def get_info_snake(self, feature, x, y):
-        """Returns the sensory information for the given feature at the given position."""
-        if feature == 'wall':
-            return self.convert_to_snake(self.get_wall_info(x, y))
-        elif feature == 'relative_body':
-            return self.convert_to_snake(self.get_relative_distance_to_body(x, y))
-        elif feature == 'binary_body':
-            return self.convert_to_snake(self.get_binary_distance_to_body(x, y))
-        elif feature == 'combined_obstacle_body':
-            return self.convert_to_snake(self.get_combined_obstacle_body_info(x, y))
-        elif feature == 'relative_apple':
-            return self.convert_to_snake(self.get_relative_distance_to_apple(x, y))
-        elif feature == 'binary_apple':
-            return self.convert_to_snake(self.get_apple_info_snake(x, y))
-        elif feature == 'relative_obstacle':
-            return self.convert_to_snake(self.get_relative_distance_to_obstacle(x, y))
-        elif feature == 'binary_obstacle':
-            return self.convert_to_snake(self.get_obstacle_info(x, y))
-        elif feature == 'nearest_body_direction':
-            return self.convert_to_snake(self.get_direction_of_nearest_body_segment(x, y))
+            return self.get_binary_distance_to_obstacle(x, y)
     
     def convert_to_snake(self, info):
         """Converts the sensory information from NSWE frame to snake's frame of reference."""
         if (self.v_x, self.v_y) == Direction.NORTH.value:  # Facing north]
-            return [info[0], info[3], info[2]]  # [north, east, west]
+            return [info[0], info[2], info[3]]  # [north, east, west]
         elif (self.v_x, self.v_y) == Direction.SOUTH.value:  # Facing south
-            return [info[1], info[2], info[3]]  # [south, west, east]
+            return [info[1], info[3], info[2]]  # [south, west, east]
         elif (self.v_x, self.v_y) == Direction.WEST.value:  # Facing west
-            return [info[2], info[1], info[0]]  # [west, south, north]
+            return [info[3], info[1], info[0]]  # [west, south, north]
         elif (self.v_x, self.v_y) == Direction.EAST.value:  # Facing east
-            return [info[3], info[0], info[1]]  # [east, north, south]
+            return [info[2], info[0], info[1]]  # [east, north, south]
         
     def get_wall_info(self, x, y):
-        return [1 / (y + 1), 1 / (self.NUM_ROWS - y), 1 / (self.NUM_COLS - x), 1 / (x + 1)]
-
+        return [1 / (y + 1), # North
+                1 / (self.NUM_ROWS - y), # South
+                1 / (self.NUM_COLS - x), # East
+                1 / (x + 1)]  # West
+    
+    def get_relative_distance_to_body(self, x, y):
+        """Returns the relative distance of the closest body part in the north, south, east, and west directions."""
+        dist_to_body = [0, 0, 0, 0]
+        for (body_x, body_y) in self.snake[:-1]:
+            if body_x == x:
+                if body_y > y: # Body is north
+                    dist_to_body[0] = 1 / (body_y - y + 1) if dist_to_body[0] == 0 else min(dist_to_body[0], 1 / (body_y - y + 1))
+                else: # Body is south
+                    dist_to_body[1] = 1 / (y - body_y + 1) if dist_to_body[1] == 0 else min(dist_to_body[1], 1 / (y - body_y + 1))
+            elif body_y == y:
+                if body_x > x: # Body is east
+                    dist_to_body[2] = 1 / (body_x - x + 1) if dist_to_body[2] == 0 else min(dist_to_body[2], 1 / (body_x - x + 1))
+                else: # Body is west
+                    dist_to_body[3] = 1 / (x - body_x + 1) if dist_to_body[3] == 0 else min(dist_to_body[3], 1 / (x - body_x + 1))
+        return dist_to_body
+    
     def get_binary_distance_to_body(self, x, y):
+        """Returns the binary distance to the body in the north, south, east, and west directions."""
         body_info = [0, 0, 0, 0]
         for (body_x, body_y) in self.snake[:-1]:
             if body_x == x:
                 if body_y < y:
-                    body_info[0] = 1
+                    body_info[0] = 1 # North
                 elif body_y > y:
-                    body_info[1] = 1
+                    body_info[1] = 1 # South
             elif body_y == y:
                 if body_x > x:
-                    body_info[2] = 1
+                    body_info[2] = 1 # East
                 elif body_x < x:
-                    body_info[3] = 1
+                    body_info[3] = 1 # West
         return body_info
 
-    def get_relative_distance_to_body(self, x, y):
-        dist_to_body = [0, 0, 0, 0]
-        for (body_x, body_y) in self.snake[:-1]:
-            if body_x == x:
-                if body_y > y:
-                    dist_to_body[1] = max(dist_to_body[1], 1 / (body_y - y + 1))
-                else:
-                    dist_to_body[0] = max(dist_to_body[0], 1 / (y - body_y + 1))
-            elif body_y == y:
-                if body_x > x:
-                    dist_to_body[2] = max(dist_to_body[2], 1 / (body_x - x + 1))
-                else:
-                    dist_to_body[3] = max(dist_to_body[3], 1 / (x - body_x + 1))
-        return dist_to_body
-
-    def get_obstacle_info(self, x, y):
-        obstacle_info = [0, 0, 0, 0]
-        if self.obstacle[0] == x:
-            if self.obstacle[1] < y:
-                obstacle_info[0] = 1
-            elif self.obstacle[1] > y:
-                obstacle_info[1] = 1
-        elif self.obstacle[1] == y:
-            if self.obstacle[0] > x:
-                obstacle_info[2] = 1
-            elif self.obstacle[0] < x:
-                obstacle_info[3] = 1
-        return obstacle_info
-
     def get_relative_distance_to_obstacle(self, x, y):
+        """Returns the relative distance to the obstacle in the north, south, east, and west directions."""
         dist_to_obstacle = [0, 0, 0, 0]
-        if self.obstacle[0] == x:
-            if self.obstacle[1] > y:
-                dist_to_obstacle[1] = 1 / (self.obstacle[1] - y + 1)
+        obstacle_x, obstacle_y = self.obstacle
+        if obstacle_x == x:
+            if obstacle_y > y:
+                dist_to_obstacle[0] = 1 / (obstacle_y - y + 1)
             else:
-                dist_to_obstacle[0] = 1 / (y - self.obstacle[1] + 1)
-        elif self.obstacle[1] == y:
-            if self.obstacle[0] > x:
-                dist_to_obstacle[2] = 1 / (self.obstacle[0] - x + 1)
+                dist_to_obstacle[1] = 1 / (y - obstacle_y + 1)
+        elif obstacle_y == y:
+            if obstacle_x > x:
+                dist_to_obstacle[2] = 1 / (obstacle_x - x + 1)
             else:
-                dist_to_obstacle[3] = 1 / (x - self.obstacle[0] + 1)
+                dist_to_obstacle[3] = 1 / (x - obstacle_x + 1)
         return dist_to_obstacle
 
-    def get_combined_obstacle_body_info(self, x, y):
-        combined_info = [0, 0, 0, 0]
-        dist_to_obstacle = self.get_relative_distance_to_obstacle(x, y)
-        dist_to_body = self.get_relative_distance_to_body(x, y)
-        for i in range(4):
-            combined_info[i] = max(dist_to_body[i], dist_to_obstacle[i])
-        return combined_info
-
-    def get_apple_info(self, x, y):
-        apple_info = [0, 0, 0, 0]
-        if self.apple[0] == x:
-            if self.apple[1] < y:
-                apple_info[0] = 1
-            elif self.apple[1] > y:
-                apple_info[1] = 1
-        elif self.apple[1] == y:
-            if self.apple[0] > x:
-                apple_info[2] = 1
-            elif self.apple[0] < x:
-                apple_info[3] = 1
-        return apple_info
-
+    def get_binary_distance_to_obstacle(self, x, y):
+        """Returns the binary distance to the obstacle in the north, south, east, and west directions."""
+        obstacle_info = [0, 0, 0, 0]
+        obstacle_x, obstacle_y = self.obstacle
+        if obstacle_x == x:
+            if obstacle_y < y:
+                obstacle_info[0] = 1
+            elif obstacle_y > y:
+                obstacle_info[1] = 1
+        elif obstacle_y == y:
+            if obstacle_x > x:
+                obstacle_info[2] = 1
+            elif obstacle_x < x:
+                obstacle_info[3] = 1
+        return obstacle_info
+    
     def get_relative_distance_to_apple(self, x, y):
         dist_to_apple = [0, 0, 0, 0]
-        if self.apple[0] == x:
-            if self.apple[1] > y:
-                dist_to_apple[1] = 1 / (self.apple[1] - y + 1)
-            else:
-                dist_to_apple[0] = 1 / (y - self.apple[1] + 1)
-        elif self.apple[1] == y:
-            if self.apple[0] > x:
-                dist_to_apple[2] = 1 / (self.apple[0] - x + 1)
-            else:
-                dist_to_apple[3] = 1 / (x - self.apple[0] + 1)
+        apple_x, apple_y = self.apple
+        if apple_x == x:
+            if apple_y > y: # Apple is north
+                dist_to_apple[0] = 1 / (apple_y - y + 1)
+            else: # Apple is south
+                dist_to_apple[1] = 1 / (y - apple_y + 1)
+        elif apple_y  == y:
+            if apple_x > x: # Apple is east
+                dist_to_apple[2] = 1 / (apple_x - x + 1)
+            else: # Apple is west
+                dist_to_apple[3] = 1 / (x - apple_x + 1)
         return dist_to_apple
 
-    def get_direction_of_nearest_body_segment(self, x, y):
-        nearest_body_dist = float('inf')
-        nearest_body_direction = [0, 0, 0, 0]
-        for (body_x, body_y) in self.snake[:-1]:
-            dist = abs(body_x - x) + abs(body_y - y)
-            if dist < nearest_body_dist:
-                nearest_body_dist = dist
-                if body_x == x:
-                    if body_y < y:
-                        nearest_body_direction = [1, 0, 0, 0]
-                    else:
-                        nearest_body_direction = [0, 1, 0, 0]
-                elif body_y == y:
-                    if body_x > x:
-                        nearest_body_direction = [0, 0, 1, 0]
-                    else:
-                        nearest_body_direction = [0, 0, 0, 1]
-        return nearest_body_direction
+    def get_binary_distance_to_apple(self, x, y):
+        dist_to_apple = [0, 0, 0, 0]
+        apple_x, apple_y = self.apple
+        if apple_x == x:
+            if apple_y > y: # Apple is north
+                dist_to_apple[0] = 1
+            else: # Apple is south
+                dist_to_apple[1] = 1
+        elif apple_y  == y:
+            if apple_x > x: # Apple is east
+                dist_to_apple[2] = 1 
+            else: # Apple is west
+                dist_to_apple[3] = 1
+        return dist_to_apple
 
 
-
-    def get_wall_info_snake(self, x, y):
-        wall_info = self.get_wall_info(x, y)
-        return self.convert_to_snake(wall_info)
-
-    def get_body_info_snake(self, x, y):
-        body_info = self.get_body_info(x, y)
-        return self.convert_to_snake(body_info)
-
-    def get_snake_distance_to_body_snake(self, x, y):
-        rel_body_info = self.get_snake_distance_to_body(x, y)
-        return self.convert_to_snake(rel_body_info)
-
-    def get_combined_obstacle_body_info_snake(self, x, y):
-        comb_info = self.get_combined_obstacle_body_info(x, y)
-        return self.convert_to_snake(comb_info)
-
-    def get_apple_info_snake(self, x, y):
-        apple_info = self.get_apple_info(x, y)
-        return self.convert_to_snake(apple_info)
-
-    def get_relative_distance_to_apple_snake(self, x, y):
-        rel_apple_info = self.get_relative_distance_to_apple(x, y)
-        return self.convert_to_snake(rel_apple_info)
-
-    def get_obstacle_info_snake(self, x, y):
-        obstacle_info = self.get_obstacle_info(x, y)
-        return self.convert_to_snake(obstacle_info)
-
-    def get_relative_distance_to_obstacle_snake(self, x, y):
-        rel_obstacle_info = self.get_relative_distance_to_obstacle(x, y)
-        return self.convert_to_snake(rel_obstacle_info)
-
-    def get_direction_of_nearest_body_segment_snake(self, x, y):
-        nearest_body_dir = self.get_direction_of_nearest_body_segment(x, y)
-        return self.convert_to_snake(nearest_body_dir)
 
     
     #===================== ANIMATION STUFF =====================
@@ -481,6 +417,8 @@ class SnakeGame:
         node_centers = self.get_node_centers(net, genome, hidden_nodes)
 
         pygame.init()
+        pygame.display.init()
+        pygame.display.set_caption('Snake Game')
         screen = pygame.display.set_mode((self.SCREEN_WIDTH, self.SCREEN_HEIGHT))
         STEP = pygame.USEREVENT + 1
         pygame.time.set_timer(STEP, self.INTERVAL)
@@ -518,7 +456,9 @@ class SnakeGame:
             self.draw_network(net, genome, node_centers, hidden_nodes)
             self.draw_fitness()
             pygame.display.flip()
+        pygame.time.wait(10)
         pygame.quit()
+        pygame.display.quit()
 
     def get_node_centers(self, net, genome, hidden_nodes):
         node_centers = {}
@@ -561,9 +501,12 @@ class SnakeGame:
 
     def draw_network(self, net, genome, node_centers, hidden_nodes):
         node_names = {}
+        if self.OUTPUT_FRAME_OF_REFERENCE == 'NSEW':
+            node_names.update({0: 'North', 1: 'South', 2: 'East', 3: 'West'})
+        if self.OUTPUT_FRAME_OF_REFERENCE == 'SNAKE':
+            node_names.update({0: 'Straight', 1: 'Left', 2: 'Right'})
         
-        if self.INPUT_FRAME_OF_REFERENCE == 'nswe':
-            node_names.update({0: 'Up', 1: 'Left', 2: 'Down', 3: 'Right'})
+        if self.INPUT_FRAME_OF_REFERENCE == 'NSEW':
             for i, feature in enumerate(self.INPUT_FEATURES):
                 if feature == 'wall':
                     node_names.update({
@@ -594,8 +537,8 @@ class SnakeGame:
                         -i*4-4: "Obst_W"
                     })
 
-        elif self.INPUT_FRAME_OF_REFERENCE == 'snake':
-            node_names.update({0: 'Left', 1: 'Straight', 2: 'Right'})
+        elif self.INPUT_FRAME_OF_REFERENCE == 'SNAKE':
+
             for i, feature in enumerate(self.INPUT_FEATURES):
                 if feature == 'wall':
                     node_names.update({
@@ -603,19 +546,19 @@ class SnakeGame:
                         -i*3-2: "Wall_L",
                         -i*3-3: "Wall_R"
                     })
-                elif feature == 'body' or feature == 'relative_body' or feature == 'combined_obstacle_body':
+                elif feature == 'binary_body' or feature == 'relative_body' or feature == 'combined_obstacle_body':
                     node_names.update({
                         -i*3-1: "Body_F",
                         -i*3-2: "Body_L",
                         -i*3-3: "Body_R"
                     })
-                elif feature == 'apple' or feature == 'relative_apple':
+                elif feature == 'binary_apple' or feature == 'relative_apple':
                     node_names.update({
                         -i*3-1: "Apple_F",
                         -i*3-2: "Apple_L",
                         -i*3-3: "Apple_R"
                     })
-                elif feature == 'obstacle' or feature == 'relative_obstacle':
+                elif feature == 'binary_obstacle' or feature == 'relative_obstacle':
                     node_names.update({
                         -i*3-1: "Obst_F",
                         -i*3-2: "Obst_L",
