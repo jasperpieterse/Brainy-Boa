@@ -78,7 +78,6 @@ class SnakeGame:
         self.v_x, self.v_y = 1, 0
         self.movement_history = []
         self.last_ate_apple = 0
-        self.sensory_function = self.create_sensory_function(self.INPUT_FEATURES)
         self.reset()
 
         # Animation parameters
@@ -179,20 +178,22 @@ class SnakeGame:
         """Moves the snake one step forward and checks for collisions and apple eating."""
         x, y = self.snake[-1]
         new_head = (x + self.v_x, y + self.v_y)
-        self.snake.append(new_head)
-        self.snake_set.add(new_head)
-
         self.front, self.left, self.right = self.get_adjacent_positions()
 
         # Check if the snake has collided with the wall, itself, or an obstacle
         if self._is_collision(new_head):
             self.dead = True
 
+        # If not, move the snake forward
+        self.snake.append(new_head)
+        self.snake_set.add(new_head)
+
         # Check if the snake has eaten the apple and if so, generate a new apple and obstacle
         if new_head == self.apple:
             self.apple = self._get_random_position(exclude=self.snake_set | {self.obstacle})
             if self.USE_OBSTACLES:
                 self.obstacle = self._get_random_position(exclude=self.snake_set | {self.apple} | {self.front, self.left, self.right})
+        # If not, remove the tail of the snake
         else:
             tail = self.snake.pop(0)
             self.snake_set.remove(tail)
@@ -202,27 +203,23 @@ class SnakeGame:
     def _is_collision(self, position):
         """Returns True if the position is a collision (with the wall, snake, or obstacle)."""
         x, y = position
-        return (x < 0 or x >= self.NUM_COLS or y < 0 or y >= self.NUM_ROWS or
-                position in self.snake_set or (self.USE_OBSTACLES and position == self.obstacle))
+        return ((x < 0) or (x >= self.NUM_COLS) or (y < 0) or (y >= self.NUM_ROWS) or
+                (position in self.snake_set) or (self.USE_OBSTACLES and position == self.obstacle))
+    
 
 
-    def create_sensory_function(self, input_features):
-        """Creates a function that returns the sensory input for the neural network."""
-        def sensory_function():
-            """Returns the sensory input for the neural network."""
-            x, y = self.snake[-1]
-            sensory_input = []
+    def sensory_function(self):
+        """Returns the sensory input for the neural network."""
+        x, y = self.snake[-1]
+        sensory_input = []
 
-            for feature in input_features:
-                if self.INPUT_FRAME_OF_REFERENCE == 'nswe':
-                    sensory_input.extend(self.get_info_nswe(feature, x, y))
-                elif self.INPUT_FRAME_OF_REFERENCE == 'snake':
-                    sensory_input.extend(self.get_info_snake(feature, x, y))
-
-            return np.array(sensory_input, dtype=float)
-
-        return sensory_function
-
+        for feature in self.INPUT_FEATURES:
+            if self.INPUT_FRAME_OF_REFERENCE == 'nswe':
+                sensory_input.extend(self.get_info_nswe(feature, x, y))
+            elif self.INPUT_FRAME_OF_REFERENCE == 'snake':
+                sensory_input.extend(self.get_info_snake(feature, x, y))
+                
+        return np.array(sensory_input, dtype=float)
 
     def get_info_nswe(self, feature, x, y):
         """Returns the sensory information for the given feature at the given position."""
@@ -231,7 +228,7 @@ class SnakeGame:
         elif feature == 'relative_body':
             return self.get_relative_distance_to_body(x, y)
         elif feature == 'binary_body':
-            return self.get_body_info(x, y)
+            return self.get_binary_distance_to_body(x, y)
         elif feature == 'combined_obstacle_body':
             return self.get_combined_obstacle_body_info(x, y)
         elif feature == 'relative_apple':
@@ -244,16 +241,15 @@ class SnakeGame:
             return self.get_obstacle_info(x, y)
         elif feature == 'nearest_body_direction':
             return self.get_direction_of_nearest_body_segment(x, y)
-        return []
 
     def get_info_snake(self, feature, x, y):
         """Returns the sensory information for the given feature at the given position."""
         if feature == 'wall':
             return self.convert_to_snake(self.get_wall_info(x, y))
         elif feature == 'relative_body':
-            return self.convert_to_snake(self.get_body_info(x, y))
-        elif feature == 'binary_body':
             return self.convert_to_snake(self.get_relative_distance_to_body(x, y))
+        elif feature == 'binary_body':
+            return self.convert_to_snake(self.get_binary_distance_to_body(x, y))
         elif feature == 'combined_obstacle_body':
             return self.convert_to_snake(self.get_combined_obstacle_body_info(x, y))
         elif feature == 'relative_apple':
@@ -261,16 +257,15 @@ class SnakeGame:
         elif feature == 'binary_apple':
             return self.convert_to_snake(self.get_apple_info_snake(x, y))
         elif feature == 'relative_obstacle':
-            return self.convert_to_snake(self.get_relative_distance_to_obstacle_snake(x, y))
+            return self.convert_to_snake(self.get_relative_distance_to_obstacle(x, y))
         elif feature == 'binary_obstacle':
-            return self.convert_to_snake(self.get_obstacle_info_snake(x, y))
+            return self.convert_to_snake(self.get_obstacle_info(x, y))
         elif feature == 'nearest_body_direction':
-            return self.convert_to_snake(self.get_direction_of_nearest_body_segment_snake(x, y))
-        return []
+            return self.convert_to_snake(self.get_direction_of_nearest_body_segment(x, y))
     
     def convert_to_snake(self, info):
         """Converts the sensory information from NSWE frame to snake's frame of reference."""
-        if (self.v_x, self.v_y) == Direction.NORTH.value:  # Facing north
+        if (self.v_x, self.v_y) == Direction.NORTH.value:  # Facing north]
             return [info[0], info[3], info[2]]  # [north, east, west]
         elif (self.v_x, self.v_y) == Direction.SOUTH.value:  # Facing south
             return [info[1], info[2], info[3]]  # [south, west, east]
@@ -278,12 +273,11 @@ class SnakeGame:
             return [info[2], info[1], info[0]]  # [west, south, north]
         elif (self.v_x, self.v_y) == Direction.EAST.value:  # Facing east
             return [info[3], info[0], info[1]]  # [east, north, south]
-
-
+        
     def get_wall_info(self, x, y):
         return [1 / (y + 1), 1 / (self.NUM_ROWS - y), 1 / (self.NUM_COLS - x), 1 / (x + 1)]
 
-    def get_body_info(self, x, y):
+    def get_binary_distance_to_body(self, x, y):
         body_info = [0, 0, 0, 0]
         for (body_x, body_y) in self.snake[:-1]:
             if body_x == x:
@@ -395,17 +389,7 @@ class SnakeGame:
                     else:
                         nearest_body_direction = [0, 0, 0, 1]
         return nearest_body_direction
-    
-    def convert_to_snake(self, info):
-        """Converts the sensory information to the snake's frame of reference."""
-        if (self.v_x, self.v_y) == (1, 0):  # Facing right
-            return info
-        elif (self.v_x, self.v_y) == (-1, 0):  # Facing left
-            return info[2:] + info[:2]
-        elif (self.v_x, self.v_y) == (0, 1):  # Facing down
-            return info[1:2] + info[:1] + info[3:] + info[2:3]
-        elif (self.v_x, self.v_y) == (0, -1):  # Facing up
-            return info[3:] + info[:3]
+
 
 
     def get_wall_info_snake(self, x, y):
@@ -795,8 +779,8 @@ class SnakeGame:
             p.add_reporter(neat.Checkpointer(1, filename_prefix=f"{Paths.RESULTS_PATH}/checkpoints/run{i}/population-"))
 
             parallel_evaluator = neat.ParallelEvaluator(multiprocessing.cpu_count(), self.eval_genome)
-            # winner = p.run(parallel_evaluator.evaluate, n = self.N_GENERATIONS)
-            winner = p.run(self.eval_genomes, n = self.N_GENERATIONS)
+            winner = p.run(parallel_evaluator.evaluate, n = self.N_GENERATIONS)
+            # winner = p.run(self.eval_genomes, n = self.N_GENERATIONS)
 
             winners.append(winner)
             stats_list.append(stats)
