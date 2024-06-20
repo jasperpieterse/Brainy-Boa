@@ -65,7 +65,8 @@ class SnakeGame:
                  min_time_to_eat_apple=100,
                  n_runs=1,
                  n_generations=10,
-                 time_interval=100):
+                 time_interval=100,
+                 checkpoint_interval=1):
         """Initializes the game with default parameters."""
         # Game parameters
         self.INPUT_FEATURES = input_features
@@ -77,6 +78,7 @@ class SnakeGame:
         self.MIN_TIME_TO_EAT_APPLE = min_time_to_eat_apple
         self.N_RUNS = n_runs
         self.N_GENERATIONS = n_generations
+        self.CHECKPOINT_INTERVAL = checkpoint_interval
 
         # Compute input and output size based on features and frame of reference
         self.NR_INPUT_FEATURES = 4 * len(self.INPUT_FEATURES) if self.INPUT_FRAME_OF_REFERENCE == 'NSEW' else 3 * len(self.INPUT_FEATURES)
@@ -118,29 +120,42 @@ class SnakeGame:
 
     def reset(self):
         """Resets the game to its initial state."""
-        self.snake = [(randint(1, self.NUM_COLS - 2), randint(1, self.NUM_ROWS - 2))]  # Snake can't start at edges
+        self.snake = [self._get_random_position(avoid_edges = True)] # Snake can't start at edges
         self.snake_set = set(self.snake)
         self.v_x, self.v_y = choice([(1, 0), (-1, 0), (0, 1), (0, -1)])
         self.front, self.left, self.right = self.get_adjacent_positions()
-        self.apple = self._get_random_position(exclude=self.snake_set | {self.obstacle})
+        self.apple = self._get_random_position(exclude=self.snake_set)
         self.obstacle = self._get_random_position(exclude=self.snake_set | {self.apple} | {self.front, self.left, self.right}) if self.USE_OBSTACLES else ()
         self.apples_eaten = 0
         self.step_count = 0
         self.last_ate_apple = 0
         self.dead = False
+        self.t = 0
 
-    def _get_random_position(self, exclude=set()) -> tuple:
+    def _get_random_position(self, exclude=None, avoid_edges=False) -> tuple:
         """Returns a random position that is not in the exclude set."""
-        pos = (randint(0, self.NUM_COLS - 1), randint(0, self.NUM_ROWS - 1))
+        
+        if avoid_edges:
+            min_x, max_x = 1, self.NUM_COLS - 2
+            min_y, max_y = 1, self.NUM_ROWS - 2
+        else:
+            min_x, max_x = 0, self.NUM_COLS - 1
+            min_y, max_y = 0, self.NUM_ROWS - 1
+
+        pos = (randint(min_x, max_x), randint(min_y, max_y))
+        if exclude is None:
+            return pos
         while pos in exclude:
-            pos = (randint(0, self.NUM_COLS - 1), randint(0, self.NUM_ROWS - 1))
+            pos = (randint(min_x, max_x), randint(min_y, max_y))
+        
         return pos
+
 
     def get_adjacent_positions(self) -> tuple:
         """Returns the positions in front, left, and right of the head position."""
         front = (self.snake[-1][0] + self.v_x, self.snake[-1][1] + self.v_y)
-        left = (self.snake[-1][0] - self.v_y, self.snake[-1][1] + self.v_x)
-        right = (self.snake[-1][0] + self.v_y, self.snake[-1][1] - self.v_x)
+        left = (self.snake[-1][0] + self.v_y, self.snake[-1][1] - self.v_x)
+        right = (self.snake[-1][0] - self.v_y, self.snake[-1][1] + self.v_x)
         return front, left, right
 
     def simulate_headless(self, net) -> float:
@@ -149,18 +164,16 @@ class SnakeGame:
 
         for _ in range(self.FITNESS_ITERS):
             self.reset()
-            t = 0
-
-            while not self.dead and (t - self.last_ate_apple <= self.MIN_TIME_TO_EAT_APPLE):
+            while not self.dead and (self.t - self.last_ate_apple <= self.MIN_TIME_TO_EAT_APPLE):
                 sensory_vector = self.sensory_function()
                 activations = net.activate(sensory_vector)
                 action = np.argmax(activations)
                 self.change_direction(action)
                 apple_eaten = self.step()
-                t += 1
+                self.t += 1
 
                 if apple_eaten:
-                    self.last_ate_apple = t
+                    self.last_ate_apple = self.t
             scores.append(len(self.snake))
 
         return np.mean(scores)
@@ -179,9 +192,12 @@ class SnakeGame:
             if action == Action.STRAIGHT.value:  # Go straight
                 pass
             elif action == Action.LEFT.value:  # Turn left
-                self.v_x, self.v_y = -self.v_y, self.v_x
+                self.v_x, self.v_y =  self.v_y, -self.v_x
             elif action == Action.RIGHT.value:  # Turn right
-                self.v_x, self.v_y = self.v_y, -self.v_x
+                self.v_x, self.v_y =  -self.v_y, self.v_x
+        else:
+            print('Invalid frame of reference selected')
+
 
     def step(self) -> bool:
         """Moves the snake one step forward and checks for collisions and apple eating."""
@@ -191,7 +207,6 @@ class SnakeGame:
         # Check if the snake has collided with the wall, itself, or an obstacle
         if self._is_collision(new_head):
             self.dead = True
-
         # If not, move the snake forward
         self.snake.append(new_head)
         self.snake_set.add(new_head)
@@ -211,7 +226,7 @@ class SnakeGame:
 
         self.step_count += 1
         return ate_apple
-
+    
     def _is_collision(self, position: tuple) -> bool:
         """Checks if the given position collides with the walls, itself, or an obstacle."""
         x, y = position
@@ -219,9 +234,8 @@ class SnakeGame:
             x < 0 or x >= self.NUM_COLS or
             y < 0 or y >= self.NUM_ROWS or
             position in self.snake_set or
-            position == self.obstacle
+            (self.USE_OBSTACLES and position == self.obstacle)
         )
-    
 
     def sensory_function(self):
         """Returns the sensory input for the neural network."""
@@ -273,12 +287,12 @@ class SnakeGame:
     def get_relative_distance_to_body(self, x, y):
         """Returns the relative distance of the closest body part in the north, south, east, and west directions."""
         dist_to_body = [0, 0, 0, 0]
-        for (body_x, body_y) in self.snake[:-1]:
+        for (body_x, body_y) in self.snake[:-1]: 
             if body_x == x:
-                if body_y > y: # Body is north
-                    dist_to_body[0] = 1 / (body_y - y + 1) if dist_to_body[0] == 0 else min(dist_to_body[0], 1 / (body_y - y + 1))
+                if body_y < y: # Body is north
+                    dist_to_body[0] = min(dist_to_body[0], 1 / (y - body_y + 1))
                 else: # Body is south
-                    dist_to_body[1] = 1 / (y - body_y + 1) if dist_to_body[1] == 0 else min(dist_to_body[1], 1 / (y - body_y + 1))
+                    dist_to_body[1] = min(dist_to_body[1], 1 / (body_y - y + 1))
             elif body_y == y:
                 if body_x > x: # Body is east
                     dist_to_body[2] = 1 / (body_x - x + 1) if dist_to_body[2] == 0 else min(dist_to_body[2], 1 / (body_x - x + 1))
@@ -307,10 +321,10 @@ class SnakeGame:
         dist_to_obstacle = [0, 0, 0, 0]
         obstacle_x, obstacle_y = self.obstacle
         if obstacle_x == x:
-            if obstacle_y > y:
-                dist_to_obstacle[0] = 1 / (obstacle_y - y + 1)
+            if obstacle_y < y:
+                dist_to_obstacle[0] = 1 / (y - obstacle_y + 1)
             else:
-                dist_to_obstacle[1] = 1 / (y - obstacle_y + 1)
+                dist_to_obstacle[1] = 1 / (obstacle_y - y + 1)
         elif obstacle_y == y:
             if obstacle_x > x:
                 dist_to_obstacle[2] = 1 / (obstacle_x - x + 1)
@@ -338,10 +352,10 @@ class SnakeGame:
         dist_to_apple = [0, 0, 0, 0]
         apple_x, apple_y = self.apple
         if apple_x == x:
-            if apple_y > y: # Apple is north
-                dist_to_apple[0] = 1 / (apple_y - y + 1)
+            if apple_y < y: # Apple is north
+                dist_to_apple[0] = 1 / (y - apple_y + 1)
             else: # Apple is south
-                dist_to_apple[1] = 1 / (y - apple_y + 1)
+                dist_to_apple[1] = 1 / (apple_y - y + 1)
         elif apple_y  == y:
             if apple_x > x: # Apple is east
                 dist_to_apple[2] = 1 / (apple_x - x + 1)
@@ -353,7 +367,7 @@ class SnakeGame:
         dist_to_apple = [0, 0, 0, 0]
         apple_x, apple_y = self.apple
         if apple_x == x:
-            if apple_y > y: # Apple is north
+            if apple_y < y: # Apple is north
                 dist_to_apple[0] = 1
             else: # Apple is south
                 dist_to_apple[1] = 1
@@ -418,9 +432,10 @@ class SnakeGame:
         hidden_nodes = [node for node in genome.nodes if not 0 <= node <= 3 and node in has_input and node in has_eval]
         node_centers = self.get_node_centers(net, genome, hidden_nodes)
 
+        # Pygame initialization
         pygame.init()
-        pygame.display.init()
-        pygame.display.set_caption('Snake Game')
+        self.screen = pygame.display.set_mode((self.SCREEN_WIDTH, self.SCREEN_HEIGHT))
+        self.font = pygame.font.SysFont(None, 24)
         screen = pygame.display.set_mode((self.SCREEN_WIDTH, self.SCREEN_HEIGHT))
         STEP = pygame.USEREVENT + 1
         pygame.time.set_timer(STEP, self.INTERVAL)
@@ -438,6 +453,7 @@ class SnakeGame:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+
                 elif event.type == STEP:
                     sensory_vector = self.sensory_function()
                     activations = net.activate(sensory_vector)
@@ -458,9 +474,11 @@ class SnakeGame:
             self.draw_network(net, genome, node_centers, hidden_nodes)
             self.draw_fitness()
             pygame.display.flip()
-        pygame.time.wait(10)
-        pygame.quit()
+        
         pygame.display.quit()
+        pygame.quit()
+        sys.exit()
+
 
     def get_node_centers(self, net, genome, hidden_nodes):
         node_centers = {}
@@ -679,7 +697,7 @@ class SnakeGame:
 
         # Show progress in the terminal and add a checkpointer
         p.add_reporter(neat.StdOutReporter(True))
-        p.add_reporter(neat.Checkpointer(10, filename_prefix=f"{Paths.RESULTS_PATH}/checkpoints/population-"))
+        p.add_reporter(neat.Checkpointer(generation_interval = self.CHECKPOINT_INTERVAL, filename_prefix=f"{Paths.RESULTS_PATH}/checkpoints/population-"))
 
         # Add a parallel evaluator to evaluate the population in parallel.
         parallel_evaluator = neat.ParallelEvaluator(multiprocessing.cpu_count(), self.eval_genome) #parallelized fitness function
