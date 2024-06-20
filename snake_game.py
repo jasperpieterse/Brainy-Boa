@@ -1,13 +1,15 @@
 import numpy as np
+import matplotlib.pyplot as plt
 import pygame
 import neat
+import warnings
 import multiprocessing
 import os
+import sys
 import shutil
 import pickle
-import visualize
+import configparser
 
-from config import *
 from random import randint, seed, choice
 from enum import Enum
 
@@ -686,8 +688,8 @@ class SnakeGame:
         winner = p.run(parallel_evaluator.evaluate, n=self.N_GENERATIONS)  
 
         # Visualize statistics and species progression over generations.
-        visualize.plot_stats(stats, ylog=False, view=True, filename=f"{Paths.RESULTS_PATH}/fitness_graph.png")
-        visualize.plot_species(stats, view=False, filename=f"{Paths.RESULTS_PATH}/species_graph.png")
+        plot_stats(stats, ylog=False, view=True, filename=f"{Paths.RESULTS_PATH}/fitness_graph.png")
+        plot_species(stats, view=False, filename=f"{Paths.RESULTS_PATH}/species_graph.png")
 
         # Save the winner.
         with open('results/winner_genome', 'wb') as f:
@@ -751,3 +753,73 @@ class SnakeGame:
         self.simulate_animation(net, genome, config) # Simulate the environment with a GUI.
 
 
+def plot_stats(statistics, ylog=False, view=False, filename='avg_fitness.svg'):
+    """ Plots the population's average and best fitness. """
+    generation = range(len(statistics.most_fit_genomes))
+    best_fitness = [c.fitness for c in statistics.most_fit_genomes]
+    avg_fitness = np.array(statistics.get_fitness_mean())
+    stdev_fitness = np.array(statistics.get_fitness_stdev())
+
+    plt.plot(generation, avg_fitness, 'b-', label="average")
+    plt.plot(generation, avg_fitness - stdev_fitness, 'g-.', label="-1 sd")
+    plt.plot(generation, avg_fitness + stdev_fitness, 'g-.', label="+1 sd")
+    plt.plot(generation, best_fitness, 'r-', label="best")
+
+    plt.title("Population's average and best fitness")
+    plt.xlabel("Generations")
+    plt.ylabel("Fitness")
+    plt.grid()
+    plt.legend(loc="best")
+    if ylog:
+        plt.gca().set_yscale('symlog')
+
+    plt.savefig(filename)
+    if view:
+        plt.show()
+
+    plt.close()
+
+
+
+class Paths:
+    RESULTS_PATH = 'results/'      # PATH to the results directory
+    CONFIG_PATH = 'config.py'  # Path to the configuration file
+    NEAT_CONFIG_PATH = 'config-neat'  # Path to the NEAT configuration file
+    DRAW_NET_PATH = 'target_pursuit_2000_results/winner-feedforward.gv'  # Path to the neural network visualization
+    WINNER_PATH = 'results/winner-feedforward'  # Path to the winner genome
+
+
+
+def plot_species(statistics, view=False, filename='speciation.svg'):
+    """ Visualizes speciation throughout evolution. """
+    if plt is None:
+        warnings.warn("This display is not available due to a missing optional dependency (matplotlib)")
+        return
+
+    species_sizes = statistics.get_species_sizes()
+    num_generations = len(species_sizes)
+    curves = np.array(species_sizes).T
+
+    fig, ax = plt.subplots()
+    ax.stackplot(range(num_generations), *curves)
+
+    plt.title("Speciation")
+    plt.ylabel("Size per Species")
+    plt.xlabel("Generations")
+
+    plt.savefig(filename)
+
+    if view:
+        plt.show()
+
+    plt.close()
+
+
+#Function to update configurtion
+def update_config(file_path, section, variables):
+    config = configparser.ConfigParser()
+    config.read(file_path)
+    for key, value in variables.items():
+        config.set(section, key, value)
+    with open(file_path, 'w') as configfile:
+        config.write(configfile)

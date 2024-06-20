@@ -1,0 +1,1 @@
+{"rule":"THE_SUPERLATIVE","sentence":"^\\QPlot the n best solutions over all runs NOT IMPLEMENTED\\E$"}
