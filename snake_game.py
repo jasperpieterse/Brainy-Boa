@@ -252,8 +252,10 @@ class SnakeGame:
 
     def get_info(self, feature, x, y):
         """Returns the sensory information for the given feature at the given position."""
-        if feature == 'wall':
-            return self.get_wall_info(x, y)
+        if feature == 'relative_wall':
+            return self.get_relative_distance_to_wall(x, y)
+        elif feature == 'binary_wall':
+            return self.get_binary_distance_to_wall(x, y)
         elif feature == 'relative_body':
             return self.get_relative_distance_to_body(x, y)
         elif feature == 'binary_body':
@@ -263,9 +265,17 @@ class SnakeGame:
         elif feature == 'binary_apple':
             return self.get_binary_distance_to_apple(x, y)
         elif feature == 'relative_obstacle':
-            return self.get_relative_distance_to_obstacle(x, y)
+            if self.USE_OBSTACLES:
+                return self.get_relative_distance_to_obstacle(x, y)
+            else:
+                print('Obstacles are not enabled. Please enable obstacles to use this feature.')
+                return [0, 0, 0, 0]
         elif feature == 'binary_obstacle':
-            return self.get_binary_distance_to_obstacle(x, y)
+            if self.USE_OBSTACLES:
+                return self.get_binary_distance_to_obstacle(x, y)
+            else:
+                print('Obstacles are not enabled. Please enable obstacles to use this feature.')
+                return [0, 0, 0, 0]
     
     def convert_to_snake(self, info):
         """Converts the sensory information from NSWE frame to snake's frame of reference."""
@@ -278,11 +288,19 @@ class SnakeGame:
         elif (self.v_x, self.v_y) == Direction.EAST.value:  # Facing east
             return [info[2], info[0], info[1]]  # [east, north, south]
         
-    def get_wall_info(self, x, y):
+    def get_relative_distance_to_wall(self, x, y):
+        """Returns the relative distance to the wall in the north, south, east, and west directions."""
         return [1 / (y + 1), # North
                 1 / (self.NUM_ROWS - y), # South
                 1 / (self.NUM_COLS - x), # East
                 1 / (x + 1)]  # West
+    
+    def get_binary_distance_to_wall(self, x, y):
+        """Return 1 if the snake head is directly adjacent to the wall in the north, south, east, and west directions, otherwise 0."""
+        return [1 if (y == 0) else 0, # North
+                1 if (y == self.NUM_ROWS - 1) else 0, # South
+                1 if (x == self.NUM_COLS - 1) else 0, # East
+                1 if (x == 0) else 0]
     
     def get_relative_distance_to_body(self, x, y):
         """Returns the relative distance of the closest body part in the north, south, east, and west directions."""
