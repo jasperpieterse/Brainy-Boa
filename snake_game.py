@@ -462,7 +462,6 @@ class SnakeGame:
                     apple = self.step()
                     if apple:
                         self.last_ate_apple = ts
-                        self.apples_eaten += 1
                     ts += 1
 
             screen.fill(self.BLACK)
@@ -512,7 +511,7 @@ class SnakeGame:
                     start = node_centers[first]
                     stop = node_centers[second]
                     weight = genome.connections[(first, second)].weight
-                    color = self.BLUE if weight >= 0 else self.ORANGE
+                    color = self.ORANGE if weight >= 0 else self.BLUE
 
                     surf = pygame.Surface((self.SCREEN_WIDTH, self.SCREEN_HEIGHT), pygame.SRCALPHA)
                     alpha = 255 * (0.3 + net.values[first] * 0.7)
@@ -728,7 +727,6 @@ class SnakeGame:
         #Clear the output directory
         shutil.rmtree(Paths.RESULTS_PATH)
 
-        winners = []
         stats_list = []
 
         for i in range(self.N_RUNS):  # Run the NEAT algorithm n times
@@ -744,8 +742,6 @@ class SnakeGame:
             parallel_evaluator = neat.ParallelEvaluator(multiprocessing.cpu_count(), self.eval_genome)
             winner = p.run(parallel_evaluator.evaluate, n = self.N_GENERATIONS)
             # winner = p.run(self.eval_genomes, n = self.N_GENERATIONS)
-
-            winners.append(winner)
             stats_list.append(stats)
 
             # Save the winner of each run
@@ -755,7 +751,7 @@ class SnakeGame:
             #Print results
             print(f"Run {i} completed, best fitness: {winner.fitness}")
 
-        return winners, stats_list
+        return stats_list
 
     def test_winner(self, genome, config_path):
         """Visualizes the genome passed playing the snake game"""
