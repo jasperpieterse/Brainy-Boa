@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import os
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 import pygame
 import neat
 import warnings
@@ -57,7 +59,7 @@ class SnakeGame:
     ORANGE = (255, 140, 0)
 
     # Direction encoding
-    DIRECTION_ENCODING = {
+    DIRECTION_ENCODING_NSEW = {
     (0, -1): 0,  # North
     (0, 1): 1,   # South
     (1, 0): 2,   # East
@@ -75,7 +77,9 @@ class SnakeGame:
                  n_runs=1,
                  n_generations=10,
                  time_interval=100,
-                 checkpoint_interval=1):
+                 checkpoint_interval=10,
+                 use_dummy_inputs=False):
+        
         """Initializes the game with default parameters."""
         # Game parameters
         self.INPUT_FEATURES = input_features
@@ -88,16 +92,17 @@ class SnakeGame:
         self.N_RUNS = n_runs
         self.N_GENERATIONS = n_generations
         self.CHECKPOINT_INTERVAL = checkpoint_interval
+        self.USE_DUMMY_INPUTS = use_dummy_inputs
 
         # Compute input size based on features and frame of reference
         if 'history' in self.INPUT_FEATURES:
             self.NR_INPUT_FEATURES = 4 * (len(self.INPUT_FEATURES) - 1)  if self.INPUT_FRAME_OF_REFERENCE == 'NSEW' else 3 * (len(self.INPUT_FEATURES) - 1)
             self.NR_INPUT_FEATURES += self.HISTORY_LENGTH
         else:
-            self.NR_INPUT_FEATURES = 4 * len(self.INPUT_FEATURES) if self.INPUT_FRAME_OF_REFERENCE == 'NSEW' else 3 * len(self.INPUT_FEATURES)
+            self.NR_INPUT_FEATURES = 4 * len(self.INPUT_FEATURES) if (self.INPUT_FRAME_OF_REFERENCE == 'NSEW' or self.USE_DUMMY_INPUTS) else 3 * len(self.INPUT_FEATURES)
 
         # Store output size based on frame of reference
-        self.NR_OUTPUT_FEATURES = 4 if self.OUTPUT_FRAME_OF_REFERENCE == 'NSEW' else 3
+        self.NR_OUTPUT_FEATURES = 4 if (self.OUTPUT_FRAME_OF_REFERENCE == 'NSEW' or self.USE_DUMMY_INPUTS) else 3
 
         # Create an object to update neat parameters with later
         self.neat_params = {
@@ -148,7 +153,6 @@ class SnakeGame:
         self.encoded_history = [0] * self.HISTORY_LENGTH
         self.dead = False
         self.t = 0
-        self.update_encoded_history()
 
     def _get_random_position(self, exclude=None, avoid_edges=False) -> tuple:
         """Returns a random position that is not in the exclude set."""
@@ -186,7 +190,7 @@ class SnakeGame:
                 activations = net.activate(sensory_vector)
                 action = np.argmax(activations)
                 self.change_direction(action)
-                apple_eaten = self.step()
+                apple_eaten = self.step(action)
                 self.t += 1
 
                 if apple_eaten:
@@ -212,11 +216,13 @@ class SnakeGame:
                 self.v_x, self.v_y =  self.v_y, -self.v_x
             elif action == Action.RIGHT.value:  # Turn right
                 self.v_x, self.v_y =  -self.v_y, self.v_x
+            elif action == 3 and self.USE_DUMMY_INPUTS:
+                pass
         else:
             print('Invalid frame of reference selected')
 
 
-    def step(self) -> bool:
+    def step(self, action) -> bool:
         """Moves the snake one step forward and checks for collisions and apple eating."""
         # Calculate the new head position
         x, y = self.snake[-1]
@@ -242,9 +248,9 @@ class SnakeGame:
             tail = self.snake.pop(0)
             self.snake_set.remove(tail)
 
-        # Update the encoded move history
+        # Update the history of moves
         if 'history' in self.INPUT_FEATURES:
-            self.update_encoded_history()
+            self.update_encoded_history(action)
 
         self.step_count += 1
         return ate_apple
@@ -295,7 +301,10 @@ class SnakeGame:
             sensory_input.extend(info)
 
         if 'history' in self.INPUT_FEATURES:
-            sensory_input.extend(self.encoded_history)
+            sensory_input.extend(reversed(self.encoded_history))
+
+        if self.INPUT_FRAME_OF_REFERENCE == 'SNAKE' and self.OUTPUT_FRAME_OF_REFERENCE == 'SNAKE' and self.USE_DUMMY_INPUTS:
+            sensory_input.extend(self.get_dummy_inputs())
 
         return np.array(sensory_input, dtype=float)
 
@@ -418,13 +427,19 @@ class SnakeGame:
             else: # Apple is west
                 dist_to_apple[3] = 1
         return dist_to_apple
-
-    def update_encoded_history(self):
+    
+    def get_dummy_inputs(self):
+        """Adds an amount of dummy inputs equivalent to the different between NSEW and SNAKE frame of reference."""
+        nr = (len(self.INPUT_FEATURES))
+        if 'history' in self.INPUT_FEATURES:
+            nr -= 1 #Nr of history nodes is not affected by frame of reference
+        return [0.5] * nr
+    
+    def update_encoded_history(self, action):
         """Updates the encoded move history with the current move."""
         if len(self.encoded_history) >= self.HISTORY_LENGTH:
             self.encoded_history.pop(0)
-        encoded_move = self.DIRECTION_ENCODING[(self.v_x, self.v_y)]
-        self.encoded_history.append(1 / (encoded_move + 1))
+        self.encoded_history.append(1 / (action + 1))
 
     
     #===================== ANIMATION STUFF =====================
@@ -505,7 +520,7 @@ class SnakeGame:
                     activations = net.activate(sensory_vector)
                     action = np.argmax(activations)
                     self.change_direction(action)
-                    apple = self.step()
+                    apple = self.step(action)
                     if apple:
                         self.last_ate_apple = ts
                     ts += 1
@@ -568,7 +583,10 @@ class SnakeGame:
         if self.OUTPUT_FRAME_OF_REFERENCE == 'NSEW':
             node_names.update({0: 'North', 1: 'South', 2: 'East', 3: 'West'})
         if self.OUTPUT_FRAME_OF_REFERENCE == 'SNAKE':
-            node_names.update({0: 'Straight', 1: 'Left', 2: 'Right'})
+            if self.USE_DUMMY_INPUTS:
+                node_names.update({0: 'Straight', 1: 'Left', 2: 'Right', 3: 'Dummy'})
+            else:
+                node_names.update({0: 'Straight', 1: 'Left', 2: 'Right'})
         
         if self.INPUT_FRAME_OF_REFERENCE == 'NSEW':
             for i, feature in enumerate(self.INPUT_FEATURES):
@@ -643,6 +661,14 @@ class SnakeGame:
                             node_names.update({
                                 -i*3-j-1: f"History_{j}"
                             })
+            if self.USE_DUMMY_INPUTS:
+                nr = (len(self.INPUT_FEATURES))
+                if 'history' in self.INPUT_FEATURES:
+                    nr -= 1
+                for j in range(nr):
+                    node_names.update({
+                        -(i+1)*3-j-1: f"Dummy_{j}"
+                    })
 
         self.draw_connections(net.input_nodes, net.output_nodes, net, genome, node_centers)
         self.draw_connections(net.input_nodes, hidden_nodes, net, genome, node_centers)
@@ -791,7 +817,7 @@ class SnakeGame:
 
             if not os.path.exists(f"{Paths.RESULTS_PATH}/checkpoints/run{i}"):
                 os.makedirs(f"{Paths.RESULTS_PATH}/checkpoints/run{i}")
-            p.add_reporter(neat.Checkpointer(1, filename_prefix=f"{Paths.RESULTS_PATH}/checkpoints/run{i}/population-"))
+            p.add_reporter(neat.Checkpointer(self.CHECKPOINT_INTERVAL, filename_prefix=f"{Paths.RESULTS_PATH}/checkpoints/run{i}/population-"))
 
             parallel_evaluator = neat.ParallelEvaluator(multiprocessing.cpu_count(), self.eval_genome)
             winner = p.run(parallel_evaluator.evaluate, n = self.N_GENERATIONS)
