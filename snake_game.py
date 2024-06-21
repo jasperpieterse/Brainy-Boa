@@ -73,7 +73,7 @@ class SnakeGame:
                  history_length=3,
                  use_obstacles=True,
                  fitness_iters=10,
-                 min_time_to_eat_apple=100,
+                 min_time_to_eat_apple=50,
                  n_runs=1,
                  n_generations=10,
                  time_interval=100,
