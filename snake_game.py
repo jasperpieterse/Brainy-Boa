@@ -23,6 +23,7 @@ class Direction(Enum):
     EAST = (1, 0)
     WEST = (-1, 0)
 
+
 class Action(Enum):
     """Enum for the actions the snake can take."""
     STRAIGHT = 0
@@ -55,6 +56,14 @@ class SnakeGame:
     BLUE = (58, 117, 196)
     ORANGE = (255, 140, 0)
 
+    # Direction encoding
+    DIRECTION_ENCODING = {
+    (0, -1): 0,  # North
+    (0, 1): 1,   # South
+    (1, 0): 2,   # East
+    (-1, 0): 3   # West
+    }
+
     def __init__(self,
                  input_features=['wall', 'relative_body', 'relative_apple', 'relative_obstacle'],
                  input_frame_of_reference='NSEW',
@@ -80,10 +89,14 @@ class SnakeGame:
         self.N_GENERATIONS = n_generations
         self.CHECKPOINT_INTERVAL = checkpoint_interval
 
-        # Compute input and output size based on features and frame of reference
-        self.NR_INPUT_FEATURES = 4 * len(self.INPUT_FEATURES) if self.INPUT_FRAME_OF_REFERENCE == 'NSEW' else 3 * len(self.INPUT_FEATURES)
+        # Compute input size based on features and frame of reference
         if 'history' in self.INPUT_FEATURES:
-            self.NR_INPUT_FEATURES += self.HISTORY_LENGTH - 1
+            self.NR_INPUT_FEATURES = 4 * (len(self.INPUT_FEATURES) - 1)  if self.INPUT_FRAME_OF_REFERENCE == 'NSEW' else 3 * (len(self.INPUT_FEATURES) - 1)
+            self.NR_INPUT_FEATURES += self.HISTORY_LENGTH
+        else:
+            self.NR_INPUT_FEATURES = 4 * len(self.INPUT_FEATURES) if self.INPUT_FRAME_OF_REFERENCE == 'NSEW' else 3 * len(self.INPUT_FEATURES)
+
+        # Store output size based on frame of reference
         self.NR_OUTPUT_FEATURES = 4 if self.OUTPUT_FRAME_OF_REFERENCE == 'NSEW' else 3
 
         # Create an object to update neat parameters with later
@@ -105,7 +118,7 @@ class SnakeGame:
         self.dead = False
         self.step_count = 0
         self.v_x, self.v_y = 1, 0
-        self.movement_history = []
+        self.encoded_history = [0] * self.HISTORY_LENGTH
         self.last_ate_apple = 0
         self.reset()
 
@@ -118,6 +131,9 @@ class SnakeGame:
         self.screen = None
         self.font = None
 
+        # Preprocess sensory functions
+        self.sensory_functions = self.preprocess_sensory_functions()
+
     def reset(self):
         """Resets the game to its initial state."""
         self.snake = [self._get_random_position(avoid_edges = True)] # Snake can't start at edges
@@ -129,8 +145,10 @@ class SnakeGame:
         self.apples_eaten = 0
         self.step_count = 0
         self.last_ate_apple = 0
+        self.encoded_history = [0] * self.HISTORY_LENGTH
         self.dead = False
         self.t = 0
+        self.update_encoded_history()
 
     def _get_random_position(self, exclude=None, avoid_edges=False) -> tuple:
         """Returns a random position that is not in the exclude set."""
@@ -150,14 +168,13 @@ class SnakeGame:
         
         return pos
 
-
     def get_adjacent_positions(self) -> tuple:
         """Returns the positions in front, left, and right of the head position."""
         front = (self.snake[-1][0] + self.v_x, self.snake[-1][1] + self.v_y)
         left = (self.snake[-1][0] + self.v_y, self.snake[-1][1] - self.v_x)
         right = (self.snake[-1][0] - self.v_y, self.snake[-1][1] + self.v_x)
         return front, left, right
-
+    
     def simulate_headless(self, net) -> float:
         """Simulates the game without rendering it and returns the fitness score."""
         scores = []
@@ -201,6 +218,7 @@ class SnakeGame:
 
     def step(self) -> bool:
         """Moves the snake one step forward and checks for collisions and apple eating."""
+        # Calculate the new head position
         x, y = self.snake[-1]
         new_head = (x + self.v_x, y + self.v_y)
 
@@ -224,6 +242,10 @@ class SnakeGame:
             tail = self.snake.pop(0)
             self.snake_set.remove(tail)
 
+        # Update the encoded move history
+        if 'history' in self.INPUT_FEATURES:
+            self.update_encoded_history()
+
         self.step_count += 1
         return ate_apple
     
@@ -236,57 +258,58 @@ class SnakeGame:
             position in self.snake_set or
             (self.USE_OBSTACLES and position == self.obstacle)
         )
-
+    
+    def preprocess_sensory_functions(self):
+        """Preprocesses and stores the sensory functions in a dictionary."""
+        sensory_functions = {}
+        for feature in self.INPUT_FEATURES:
+            if feature == 'relative_wall':
+                sensory_functions[feature] = self.get_relative_distance_to_wall
+            elif feature == 'binary_wall':
+                sensory_functions[feature] = self.get_binary_distance_to_wall
+            elif feature == 'relative_body':
+                sensory_functions[feature] = self.get_relative_distance_to_body
+            elif feature == 'binary_body':
+                sensory_functions[feature] = self.get_binary_distance_to_body
+            elif feature == 'relative_apple':
+                sensory_functions[feature] = self.get_relative_distance_to_apple
+            elif feature == 'binary_apple':
+                sensory_functions[feature] = self.get_binary_distance_to_apple
+            elif feature == 'relative_obstacle' and self.USE_OBSTACLES:
+                sensory_functions[feature] = self.get_relative_distance_to_obstacle
+            elif feature == 'binary_obstacle' and self.USE_OBSTACLES:
+                sensory_functions[feature] = self.get_binary_distance_to_obstacle
+        
+        return sensory_functions
+    
     def sensory_function(self):
         """Returns the sensory input for the neural network."""
         x, y = self.snake[-1]
         sensory_input = []
+        
+        for feature, func in self.sensory_functions.items():
+            info = func(x, y)
+            if self.INPUT_FRAME_OF_REFERENCE == 'SNAKE':
+                direction = (self.v_x, self.v_y)
+                info = self.convert_to_snake(info, direction)
+            sensory_input.extend(info)
 
-        for feature in self.INPUT_FEATURES:
-            if self.INPUT_FRAME_OF_REFERENCE == 'NSEW':
-                sensory_input.extend(self.get_info(feature, x, y))
-            elif self.INPUT_FRAME_OF_REFERENCE == 'SNAKE':
-                sensory_input.extend(self.convert_to_snake(self.get_info(feature, x, y)))
-                
+        if 'history' in self.INPUT_FEATURES:
+            sensory_input.extend(self.encoded_history)
+
         return np.array(sensory_input, dtype=float)
 
-    def get_info(self, feature, x, y):
-        """Returns the sensory information for the given feature at the given position."""
-        if feature == 'relative_wall':
-            return self.get_relative_distance_to_wall(x, y)
-        elif feature == 'binary_wall':
-            return self.get_binary_distance_to_wall(x, y)
-        elif feature == 'relative_body':
-            return self.get_relative_distance_to_body(x, y)
-        elif feature == 'binary_body':
-            return self.get_binary_distance_to_body(x, y)
-        elif feature == 'relative_apple':
-            return self.get_relative_distance_to_apple(x, y)
-        elif feature == 'binary_apple':
-            return self.get_binary_distance_to_apple(x, y)
-        elif feature == 'relative_obstacle':
-            if self.USE_OBSTACLES:
-                return self.get_relative_distance_to_obstacle(x, y)
-            else:
-                print('Obstacles are not enabled. Please enable obstacles to use this feature.')
-                return [0, 0, 0, 0]
-        elif feature == 'binary_obstacle':
-            if self.USE_OBSTACLES:
-                return self.get_binary_distance_to_obstacle(x, y)
-            else:
-                print('Obstacles are not enabled. Please enable obstacles to use this feature.')
-                return [0, 0, 0, 0]
-    
-    def convert_to_snake(self, info):
+    def convert_to_snake(self, info, direction):
         """Converts the sensory information from NSWE frame to snake's frame of reference."""
-        if (self.v_x, self.v_y) == Direction.NORTH.value:  # Facing north]
+        if direction == Direction.NORTH.value:  # Facing north
             return [info[0], info[2], info[3]]  # [north, east, west]
-        elif (self.v_x, self.v_y) == Direction.SOUTH.value:  # Facing south
+        elif direction == Direction.SOUTH.value:  # Facing south
             return [info[1], info[3], info[2]]  # [south, west, east]
-        elif (self.v_x, self.v_y) == Direction.WEST.value:  # Facing west
+        elif direction == Direction.WEST.value:  # Facing west
             return [info[3], info[1], info[0]]  # [west, south, north]
-        elif (self.v_x, self.v_y) == Direction.EAST.value:  # Facing east
+        elif direction == Direction.EAST.value:  # Facing east
             return [info[2], info[0], info[1]]  # [east, north, south]
+
         
     def get_relative_distance_to_wall(self, x, y):
         """Returns the relative distance to the wall in the north, south, east, and west directions."""
@@ -396,7 +419,12 @@ class SnakeGame:
                 dist_to_apple[3] = 1
         return dist_to_apple
 
-
+    def update_encoded_history(self):
+        """Updates the encoded move history with the current move."""
+        if len(self.encoded_history) >= self.HISTORY_LENGTH:
+            self.encoded_history.pop(0)
+        encoded_move = self.DIRECTION_ENCODING[(self.v_x, self.v_y)]
+        self.encoded_history.append(1 / (encoded_move + 1))
 
     
     #===================== ANIMATION STUFF =====================
@@ -496,7 +524,6 @@ class SnakeGame:
         pygame.quit()
         sys.exit()
 
-
     def get_node_centers(self, net, genome, hidden_nodes):
         node_centers = {}
         start_y = self.WINDOW_BUFFER
@@ -545,7 +572,7 @@ class SnakeGame:
         
         if self.INPUT_FRAME_OF_REFERENCE == 'NSEW':
             for i, feature in enumerate(self.INPUT_FEATURES):
-                if feature == 'wall':
+                if feature == 'relative_wall' or feature == 'binary_wall':
                     node_names.update({
                         -i*4-1: "Wall_N",
                         -i*4-2: "Wall_S",
@@ -573,11 +600,15 @@ class SnakeGame:
                         -i*4-3: "Obst_E",
                         -i*4-4: "Obst_W"
                     })
+                elif feature == 'history':
+                    for j in range(self.HISTORY_LENGTH):
+                        node_names.update({
+                            -i*4-j-1: f"History_{j}"
+                        })
 
         elif self.INPUT_FRAME_OF_REFERENCE == 'SNAKE':
-
             for i, feature in enumerate(self.INPUT_FEATURES):
-                if feature == 'wall':
+                if feature == 'relative_wall' or feature == 'binary_wall':
                     node_names.update({
                         -i*3-1: "Wall_F",
                         -i*3-2: "Wall_L",
@@ -607,6 +638,11 @@ class SnakeGame:
                         -i*3-2: "Body_L",
                         -i*3-3: "Body_R"
                     })
+                elif feature == 'history':
+                        for j in range(self.HISTORY_LENGTH):
+                            node_names.update({
+                                -i*3-j-1: f"History_{j}"
+                            })
 
         self.draw_connections(net.input_nodes, net.output_nodes, net, genome, node_centers)
         self.draw_connections(net.input_nodes, hidden_nodes, net, genome, node_centers)
