@@ -2,7 +2,7 @@
 
 <h1 align="center">Snake-NEAT</h1><br>
 <p align="center">
-  <img alt="Snake-NEAT" title="Snake-NEAT" src="https://i.imgur.com/BDdGfBC.gif" width="450"><br>
+  <img alt="Brainy Boa" title="Brainy Boa" src="https://i.imgur.com/BDdGfBC.gif" width="450"><br>
 </p>
 
 <h4 align="center">A snake game that learns autonomously using the NEAT algorithm</h4>

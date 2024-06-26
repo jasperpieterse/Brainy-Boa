@@ -18,6 +18,15 @@ from enum import Enum
 # Initialize random seed for reproducibility
 seed(42)
 
+class Paths:
+    RESULTS_PATH = 'results/'      # PATH to the results directory
+    CHECKPOINTS_PATH = 'checkpoints/'  # PATH to the checkpoints directory
+    CONFIG_PATH = 'config.py'  # Path to the configuration file
+    NEAT_CONFIG_PATH = 'config-neat'  # Path to the NEAT configuration file
+    DRAW_NET_PATH = 'target_pursuit_2000_results/winner-feedforward.gv'  # Path to the neural network visualization
+    WINNER_PATH = 'results/winner-feedforward'  # Path to the winner genome
+
+
 class Direction(Enum):
     """Cartesian coordinates with inverted y-axis."""
     NORTH = (0, -1)
@@ -78,7 +87,8 @@ class SnakeGame:
                  n_generations=10,
                  time_interval=100,
                  checkpoint_interval=10,
-                 use_dummy_inputs=False):
+                 use_dummy_inputs=False,
+                 use_uniform_dummies=False):
         
         """Initializes the game with default parameters."""
         # Game parameters
@@ -93,6 +103,7 @@ class SnakeGame:
         self.N_GENERATIONS = n_generations
         self.CHECKPOINT_INTERVAL = checkpoint_interval
         self.USE_DUMMY_INPUTS = use_dummy_inputs
+        self.USE_UNIFORM_DUMMIES = use_uniform_dummies
 
         # Compute input size based on features and frame of reference
         if 'history' in self.INPUT_FEATURES:
@@ -433,8 +444,11 @@ class SnakeGame:
         nr = (len(self.INPUT_FEATURES))
         if 'history' in self.INPUT_FEATURES:
             nr -= 1 #Nr of history nodes is not affected by frame of reference
-        return [0.5] * nr
-    
+        if self.USE_UNIFORM_DUMMIES:
+            return np.random.rand(nr).tolist() # Dummy inputs are random from 0 to 1
+        else:
+            return [0.5] * nr
+
     def update_encoded_history(self, action):
         """Updates the encoded move history with the current move."""
         if len(self.encoded_history) >= self.HISTORY_LENGTH:
@@ -764,8 +778,8 @@ class SnakeGame:
                             config_file)
 
         #Set results directory
-        if not os.path.exists(f"{Paths.RESULTS_PATH}/checkpoints"):
-            os.makedirs(f"{Paths.RESULTS_PATH}/checkpoints")
+        if not os.path.exists(f"{Paths.CHECKPOINTS_PATH}"):
+            os.makedirs(f"{Paths.CHECKPOINTS_PATH}")
 
         # Create the population
         p = neat.Population(config)
@@ -776,7 +790,7 @@ class SnakeGame:
 
         # Show progress in the terminal and add a checkpointer
         p.add_reporter(neat.StdOutReporter(True))
-        p.add_reporter(neat.Checkpointer(generation_interval = self.CHECKPOINT_INTERVAL, filename_prefix=f"{Paths.RESULTS_PATH}/checkpoints/population-"))
+        p.add_reporter(neat.Checkpointer(generation_interval = self.CHECKPOINT_INTERVAL, filename_prefix=f"{Paths.CHECKPOINTS_PATH}/population-"))
 
         # Add a parallel evaluator to evaluate the population in parallel.
         parallel_evaluator = neat.ParallelEvaluator(multiprocessing.cpu_count(), self.eval_genome) #parallelized fitness function
@@ -801,11 +815,11 @@ class SnakeGame:
                             config_file)
 
         # Ensure the results directory exists.
-        if not os.path.exists(f"{Paths.RESULTS_PATH}/checkpoints"):
-            os.makedirs(f"{Paths.RESULTS_PATH}/checkpoints")
+        if not os.path.exists(f"{Paths.CHECKPOINTS_PATH}"):
+            os.makedirs(f"{Paths.CHECKPOINTS_PATH}")
 
         #Clear the output directory
-        shutil.rmtree(Paths.RESULTS_PATH)
+        shutil.rmtree(Paths.CHECKPOINTS_PATH)
 
         stats_list = []
 
@@ -815,9 +829,9 @@ class SnakeGame:
             stats = neat.StatisticsReporter()
             p.add_reporter(stats)
 
-            if not os.path.exists(f"{Paths.RESULTS_PATH}/checkpoints/run{i}"):
-                os.makedirs(f"{Paths.RESULTS_PATH}/checkpoints/run{i}")
-            p.add_reporter(neat.Checkpointer(self.CHECKPOINT_INTERVAL, filename_prefix=f"{Paths.RESULTS_PATH}/checkpoints/run{i}/population-"))
+            if not os.path.exists(f"{Paths.CHECKPOINTS_PATH}/run{i}"):
+                os.makedirs(f"{Paths.CHECKPOINTS_PATH}/run{i}")
+            p.add_reporter(neat.Checkpointer(self.CHECKPOINT_INTERVAL, filename_prefix=f"{Paths.CHECKPOINTS_PATH}/run{i}/population-"))
 
             parallel_evaluator = neat.ParallelEvaluator(multiprocessing.cpu_count(), self.eval_genome)
             winner = p.run(parallel_evaluator.evaluate, n = self.N_GENERATIONS)
@@ -825,7 +839,7 @@ class SnakeGame:
             stats_list.append(stats)
 
             # Save the winner of each run
-            with open(f'{Paths.RESULTS_PATH}/checkpoints/run{i}/winner_genome', 'wb') as f:
+            with open(f'{Paths.CHECKPOINTS_PATH}/run{i}/winner_genome', 'wb') as f:
                 pickle.dump(winner, f)
 
             #Print results
@@ -874,13 +888,6 @@ def plot_stats(statistics, ylog=False, view=False, filename='avg_fitness.svg'):
     plt.close()
 
 
-
-class Paths:
-    RESULTS_PATH = 'results/'      # PATH to the results directory
-    CONFIG_PATH = 'config.py'  # Path to the configuration file
-    NEAT_CONFIG_PATH = 'config-neat'  # Path to the NEAT configuration file
-    DRAW_NET_PATH = 'target_pursuit_2000_results/winner-feedforward.gv'  # Path to the neural network visualization
-    WINNER_PATH = 'results/winner-feedforward'  # Path to the winner genome
 
 
 
