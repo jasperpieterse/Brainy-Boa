@@ -2,7 +2,7 @@
 
 <h1 align="center">Snake-NEAT</h1><br>
 <p align="center">
-  <img alt="Brainy Boa" title="Brainy Boa" src="https://i.imgur.com/KfwUaUW.mp4" width="450"><br>
+  <img alt="Brainy Boa" title="Brainy Boa" src="https://github.com/jasperpieterse/Brainy-Boa/blob/82b9fea2ae5cf569763c973549716951d57bab29/SnakeGIF.gif" width="450"><br>
 </p>
 
 <h4 align="center">A snake game that learns autonomously using the NEAT algorithm</h4>
@@ -11,7 +11,7 @@ Developed by Jasper Pieterse and Daria Mihalia for the final project of the cour
 
 This repository is allows one to train a virtual snake to collect apples while avoiding obstacles. The snake is controlled by a neural network, trained using the NEAT (NeuroEvolution of Augmenting Topologies) algorithm. This code allows you to explore how the input and outputs the neural network receives, influence the learning using NEAT. For more informationm, refer to the report attached.
 
-This project is an extension of the original found in [this repository](https://github.com/danielchang2002/5038W_Final), with additional features and enhancements:
+This project is an extension of the original found in [this repository](), with additional features and enhancements:
 
 - Flexible and Custom Input Features [Listed Below]
 - Introducing a frame of reference for the snake, enhancing learning efficiency
