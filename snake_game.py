@@ -367,14 +367,14 @@ class SnakeGame:
         for (body_x, body_y) in self.snake[:-1]:
             if body_x == x:
                 if body_y < y:
-                    body_info[0] = 1 # North
+                    body_info[0] = 1 if y - body_y == 1 else 0
                 elif body_y > y:
-                    body_info[1] = 1 # South
+                    body_info[1] = 1 if body_y - y == 1 else 0
             elif body_y == y:
                 if body_x > x:
-                    body_info[2] = 1 # East
+                    body_info[2] = 1 if body_x - x == 1 else 0
                 elif body_x < x:
-                    body_info[3] = 1 # West
+                    body_info[3] = 1 if x - body_x == 1 else 0
         return body_info
 
     def get_relative_distance_to_obstacle(self, x, y):
@@ -399,14 +399,14 @@ class SnakeGame:
         obstacle_x, obstacle_y = self.obstacle
         if obstacle_x == x:
             if obstacle_y < y:
-                obstacle_info[0] = 1
+                obstacle_info[0] = 1 if y - obstacle_y == 1 else 0
             elif obstacle_y > y:
-                obstacle_info[1] = 1
+                obstacle_info[1] = 1 if obstacle_y - y == 1 else 0
         elif obstacle_y == y:
             if obstacle_x > x:
-                obstacle_info[2] = 1
+                obstacle_info[2] = 1 if obstacle_x - x == 1 else 0
             elif obstacle_x < x:
-                obstacle_info[3] = 1
+                obstacle_info[3] = 1 if x - obstacle_x == 1 else 0
         return obstacle_info
     
     def get_relative_distance_to_apple(self, x, y):
