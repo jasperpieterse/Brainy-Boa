@@ -81,6 +81,3 @@ Based on the frame of reference, each feature is in either four directions (Nort
 - Relative Obstacle: Inverted distances to obstacles in each direction
 - Binary Obstacle: Binary indicators of obstacle immediately next to snake head in each direction.
 - History: N (= history length) nodes representing the previous N moves of the snake.
-  
-### Outputs
-
