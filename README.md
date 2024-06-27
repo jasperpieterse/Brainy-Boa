@@ -1,6 +1,6 @@
 ## About
 
-<h1 align="center">Snake-NEAT</h1><br>
+<h1 align="center">Brainy Boa</h1><br>
 <p align="center">
   <img alt="Brainy Boa" title="Brainy Boa" src="https://github.com/jasperpieterse/Brainy-Boa/blob/82b9fea2ae5cf569763c973549716951d57bab29/SnakeGIF.gif?raw=true" width="450"><br>
 </p>
@@ -9,14 +9,14 @@
 
 Developed by Jasper Pieterse and Daria Mihalia for the final project of the course Natural Computing (NWI-IMC042). 
 
-This repository is allows one to train a virtual snake to collect apples while avoiding obstacles. The snake is controlled by a neural network, trained using the NEAT (NeuroEvolution of Augmenting Topologies) algorithm. This code allows you to explore how the input and outputs the neural network receives, influence the learning using NEAT. For more informationm, refer to the report attached.
+This repository is allows one to train a virtual snake to collect apples while avoiding obstacles. The snake is controlled by a neural network, trained using the NEAT (NeuroEvolution of Augmenting Topologies) algorithm. This code allows the user to explore how the input and outputs the neural network receives, influence the learning of the game-playing agent. For more information, refer to the report attached.
 
-This project is an extension of the original found in [this repository](), with additional features and enhancements:
+This project is an extension of the original found in [this repository](https://github.com/danielchang2002/5038W_Final), with additional features and enhancements:
 
-- Flexible and Custom Input Features [Listed Below]
-- Introducing a frame of reference for the snake, enhancing learning efficiency
+-Refactored the code into a class structure, allowing separate instances of the Brainy Boa agent to run and compare. Previously, the code used global variables, requiring a full restart for each run and external storing of results for comparisons.
+- Flexible and Custom Input Features for the Neural Network (e.g., wall, body, apple, obstacles either as binary or relative distances)
+- Flexible frame of reference for the snake orientation (either cardinal directions or relative to the snake's orientation)
 - Integration of obstacles in the game environment
-- Framework for comparing multiple instances of the snake's behavior
 
 ## How to use:
 1. Clone the Repository
