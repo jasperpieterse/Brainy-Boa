@@ -82,7 +82,7 @@ class SnakeGame:
                  history_length=3,
                  use_obstacles=True,
                  fitness_iters=10,
-                 min_time_to_eat_apple=50,
+                 max_time_to_eat_apple=50,
                  n_runs=1,
                  n_generations=10,
                  time_interval=100,
@@ -98,7 +98,7 @@ class SnakeGame:
         self.HISTORY_LENGTH = history_length
         self.USE_OBSTACLES = use_obstacles
         self.FITNESS_ITERS = fitness_iters
-        self.MIN_TIME_TO_EAT_APPLE = min_time_to_eat_apple
+        self.MAX_TIME_TO_EAT_APPLE = max_time_to_eat_apple
         self.N_RUNS = n_runs
         self.N_GENERATIONS = n_generations
         self.CHECKPOINT_INTERVAL = checkpoint_interval
@@ -196,7 +196,7 @@ class SnakeGame:
 
         for _ in range(self.FITNESS_ITERS):
             self.reset()
-            while not self.dead and (self.t - self.last_ate_apple <= self.MIN_TIME_TO_EAT_APPLE):
+            while not self.dead and (self.t - self.last_ate_apple <= self.MAX_TIME_TO_EAT_APPLE):
                 sensory_vector = self.sensory_function()
                 activations = net.activate(sensory_vector)
                 action = np.argmax(activations)
@@ -521,7 +521,7 @@ class SnakeGame:
         while running:
             if self.dead:
                 running = False
-            if ts - self.last_ate_apple > self.MIN_TIME_TO_EAT_APPLE:
+            if ts - self.last_ate_apple > self.MAX_TIME_TO_EAT_APPLE:
                 running = False
 
             
