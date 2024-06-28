@@ -77,7 +77,7 @@ Based on the frame of reference, each feature is in either four directions (Nort
 - Relative Apple: Inverted distances of the apple's position relative to the snake's head in each direction.
 - Relative Obstacle: Inverted distances to obstacle in each direction
 - Binary Wall: The presence of walls directly next to the snake's head in each direction (1 for wall, 0 for no wall).
-- Binary Body: Binary indicators of segments of the snake's body immediate next to snake head in each direction (1 for body, 0 for no body)
+- Binary Body: Binary indicators of segments of the snake's body immediately next to the snake's head in each direction (1 for body, 0 for no body)
 - Binary Apple: Binary indicators of the apple's position of apple being present along the axis relative to the snake's head in each direction (1 for apple, 0 for no apple).
-- Binary Obstacle: Binary indicators of obstacle immediately next to snake head in each direction (1 for obstacle, 0 for no obstacle)
+- Binary Obstacle: Binary indicators of obstacle immediately next to the snake's head in each direction (1 for obstacle, 0 for no obstacle)
 - History: Set amount of nodes representing the previous N moves of the snake using the encoding $1/(N+1)$ for $N = {up:0, down:1, left:2, right:3}$ for the NSEW frame and $N = {forward:0, left:1, right:2}$ for the Snake Frame of reference
