@@ -2,7 +2,7 @@
 
 <h1 align="center">Snake_NE</h1><br>
 <p align="center">
-  <img alt="Snake_NE" title="Snake_NE" src="https://github.com/jasperpieterse/SNAKE_NE/blob/82b9fea2ae5cf569763c973549716951d57bab29/SnakeGIF.gif?raw=true" width="450"><br>
+  <img alt="Snake_NE" title="Snake_NE" src="https://github.com/jasperpieterse/Snake-NE/blob/82b9fea2ae5cf569763c973549716951d57bab29/SnakeGIF.gif?raw=true" width="450"><br>
 </p>
 
 <h4 align="center"> A snake game that learns autonomously using the NEAT algorithm</h4>
@@ -74,7 +74,7 @@ Based on the frame of reference, each feature is in either four directions (Nort
 - Binary Obstacle: Binary indicators of obstacle immediately next to the snake's head in each direction (1 for obstacle, 0 for no obstacle)
 - History: Set amount of nodes representing the previous N moves of the snake using the encoding $1/(N+1)$ for $N = {up:0, down:1, left:2, right:3}$ for the NSEW frame and $N = {forward:0, left:1, right:2}$ for the Snake Frame of reference
 
-### Credits
+## Credits
 
 This project extends the original implementation from [this repository](https://github.com/danielchang2002/5038W_Final) with the following improvements:
 
