@@ -7,9 +7,11 @@
 
 <h4 align="center"> A snake game that learns autonomously using the NEAT algorithm</h4>
 
-This repository contains a **snake game with autonomous learning**, implemented using the **NEAT (NeuroEvolution of Augmenting Topologies) algorithm**. The project was developed by **Jasper Pieterse and Daria Mihalia** as the final project for the course **Natural Computing (NWI-IMC042).**  
+This repository a **snake game** where the snake learns to navigate its environment **autonomously** using the **NEAT (NeuroEvolution of Augmenting Topologies)** algorithm. It was developed by Jasper Pieterse and Daria Mihalia as the final project for the course **Natural Computing (NWI-IMC042)**.
 
-The game trains a virtual snake to **collect apples while avoiding obstacles**. The snake is controlled by a **neural network**, which evolves over generations using the NEAT algorithm. This allows users to explore how different inputs and outputs influence the learning process of the game-playing agent. A detailed explanation is provided in the attached report.  
+The goal is to train a virtual snake to **collect apples while avoiding obstacles**. The snake is controlled by a **neural network** that evolves over multiple generations through neuroevolution. This allows users to explore how different **inputs** and **outputs** affect the learning process of the game-playing agent.
+
+A detailed explanation is provided in the attached report.
 
 ## Installation 
 
