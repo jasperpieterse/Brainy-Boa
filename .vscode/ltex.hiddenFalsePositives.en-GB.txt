@@ -1,2 +1,0 @@
-{"rule":"THE_SUPERLATIVE","sentence":"^\\QPlot the n best solutions over all runs NOT IMPLEMENTED\\E$"}
-{"rule":"ANYMORE","sentence":"^\\QIs it simply because the network cannot run into itself anymore, or is it because the network is smaller in size (thus easier to evolve)?\\E$"}

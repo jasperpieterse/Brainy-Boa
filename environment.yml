@@ -1,4 +1,4 @@
-name: BrainyBoa
+name: Snake-NE
 channels:
   - defaults
 dependencies:
